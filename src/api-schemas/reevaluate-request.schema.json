@@ -1,0 +1,70 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"additionalProperties": false,
+	"properties": {
+		"postId": {
+			"type": "number",
+			"x-typeTag": "uint32"
+		},
+		"blockInstanceId": {
+			"type": "string",
+			"minLength": 8,
+			"maxLength": 64
+		},
+		"experimentId": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 191
+		},
+		"publicWriteToken": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 512
+		},
+		"variantCount": {
+			"enum": [
+				2,
+				3
+			],
+			"type": "number"
+		},
+		"metric": {
+			"enum": [
+				"ctr"
+			],
+			"type": "string"
+		},
+		"minimumImpressionsPerVariant": {
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 0
+		},
+		"minimumClicksPerVariant": {
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 0
+		},
+		"evaluationWindowDays": {
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 1,
+			"maximum": 365
+		},
+		"lockWinnerAfterSelection": {
+			"type": "boolean"
+		}
+	},
+	"required": [
+		"postId",
+		"blockInstanceId",
+		"experimentId",
+		"variantCount",
+		"metric",
+		"minimumImpressionsPerVariant",
+		"minimumClicksPerVariant",
+		"evaluationWindowDays",
+		"lockWinnerAfterSelection"
+	],
+	"title": "AbTestBlockReevaluateRequest",
+	"type": "object"
+}

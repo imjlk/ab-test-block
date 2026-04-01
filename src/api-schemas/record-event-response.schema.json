@@ -1,0 +1,52 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"additionalProperties": false,
+	"properties": {
+		"accepted": {
+			"type": "boolean"
+		},
+		"counted": {
+			"type": "boolean"
+		},
+		"postId": {
+			"type": "number",
+			"x-typeTag": "uint32"
+		},
+		"blockInstanceId": {
+			"type": "string",
+			"minLength": 8,
+			"maxLength": 64
+		},
+		"experimentId": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 191
+		},
+		"variant": {
+			"enum": [
+				"a",
+				"b",
+				"c"
+			],
+			"type": "string"
+		},
+		"eventType": {
+			"enum": [
+				"impression",
+				"click"
+			],
+			"type": "string"
+		}
+	},
+	"required": [
+		"accepted",
+		"counted",
+		"postId",
+		"blockInstanceId",
+		"experimentId",
+		"variant",
+		"eventType"
+	],
+	"title": "AbTestBlockRecordEventResponse",
+	"type": "object"
+}

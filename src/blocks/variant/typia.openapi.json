@@ -1,31 +1,37 @@
 {
 	"components": {
 		"schemas": {
-			"AbTestBlockCounterQuery": {
+			"AbTestVariantAttributes": {
 				"$schema": "https://json-schema.org/draft/2020-12/schema",
 				"additionalProperties": false,
 				"properties": {
-					"postId": {
-						"type": "number",
-						"x-typeTag": "uint32"
+					"variantKey": {
+						"enum": [
+							"a",
+							"b",
+							"c"
+						],
+						"default": "a",
+						"type": "string"
 					},
-					"resourceKey": {
+					"variantLabel": {
+						"default": "Variant A",
 						"type": "string",
 						"minLength": 1,
-						"maxLength": 100
+						"maxLength": 40
 					}
 				},
 				"required": [
-					"postId",
-					"resourceKey"
+					"variantKey",
+					"variantLabel"
 				],
-				"title": "AbTestBlockCounterQuery",
+				"title": "AbTestVariantAttributes",
 				"type": "object"
 			}
 		}
 	},
 	"info": {
-		"title": "AbTestBlockCounterQuery",
+		"title": "AbTestVariantAttributes",
 		"version": "1.0.0"
 	},
 	"openapi": "3.1.0",

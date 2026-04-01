@@ -1,0 +1,70 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"additionalProperties": false,
+	"properties": {
+		"postId": {
+			"type": "number",
+			"x-typeTag": "uint32"
+		},
+		"blockInstanceId": {
+			"type": "string",
+			"minLength": 8,
+			"maxLength": 64
+		},
+		"experimentId": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 191
+		},
+		"publicWriteToken": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 512
+		},
+		"variant": {
+			"enum": [
+				"a",
+				"b",
+				"c"
+			],
+			"type": "string"
+		},
+		"eventType": {
+			"enum": [
+				"impression",
+				"click"
+			],
+			"type": "string"
+		},
+		"preview": {
+			"default": false,
+			"type": "boolean"
+		},
+		"source": {
+			"enum": [
+				"query-preview",
+				"locked-winner",
+				"manual-winner",
+				"automatic-winner",
+				"sticky",
+				"weighted-random"
+			],
+			"type": "string"
+		},
+		"timestamp": {
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 0
+		}
+	},
+	"required": [
+		"postId",
+		"blockInstanceId",
+		"experimentId",
+		"variant",
+		"eventType",
+		"timestamp"
+	],
+	"title": "AbTestBlockRecordEventRequest",
+	"type": "object"
+}

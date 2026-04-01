@@ -1,14 +1,4 @@
-import type { TextAlignment } from '@wp-typia/block-types/block-editor/alignment';
-import type {
-	TypiaValidationError,
-	ValidationResult,
-} from '@wp-typia/create/runtime/validation';
 import { tags } from 'typia';
-
-export type {
-	TypiaValidationError,
-	ValidationResult,
-} from '@wp-typia/create/runtime/validation';
 
 export type VariantKey = 'a' | 'b' | 'c';
 export type VariantCount = 2 | 3;
@@ -37,30 +27,49 @@ export interface AbTestTrafficWeights {
 }
 
 export interface AbTestExperimentAttributes {
-	experimentId: string & tags.MinLength< 1 > & tags.MaxLength< 191 >;
-	variantCount: VariantCount;
+	experimentId: string &
+		tags.MinLength< 1 > &
+		tags.MaxLength< 191 > &
+		tags.Default< 'experiment' >;
+	variantCount: VariantCount & tags.Default< 2 >;
 	weights: AbTestTrafficWeights;
-	previewQueryKey: string & tags.MinLength< 1 > & tags.MaxLength< 50 >;
-	stickyAssignment: boolean;
-	winnerMode: WinnerMode;
+	previewQueryKey: string &
+		tags.MinLength< 1 > &
+		tags.MaxLength< 50 > &
+		tags.Default< 'abtest' >;
+	stickyAssignment: boolean & tags.Default< true >;
+	winnerMode: WinnerMode & tags.Default< 'off' >;
 	manualWinner?: VariantKey;
-	automaticMetric: AutomaticMetric;
-	minimumImpressionsPerVariant: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
-	minimumClicksPerVariant: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
-	evaluationWindowDays: number & tags.Minimum< 1 > & tags.Maximum< 365 > & tags.Type< 'uint32' >;
-	lockWinnerAfterSelection: boolean;
-	trackImpressions: boolean;
-	trackClicks: boolean;
-	emitBrowserEvents: boolean;
-	emitKexpLayer: boolean;
-	emitDataLayer: boolean;
-	emitClarityHook: boolean;
+	automaticMetric: AutomaticMetric & tags.Default< 'ctr' >;
+	minimumImpressionsPerVariant: number &
+		tags.Minimum< 0 > &
+		tags.Type< 'uint32' > &
+		tags.Default< 100 >;
+	minimumClicksPerVariant: number &
+		tags.Minimum< 0 > &
+		tags.Type< 'uint32' > &
+		tags.Default< 1 >;
+	evaluationWindowDays: number &
+		tags.Minimum< 1 > &
+		tags.Maximum< 365 > &
+		tags.Type< 'uint32' > &
+		tags.Default< 14 >;
+	lockWinnerAfterSelection: boolean & tags.Default< true >;
+	trackImpressions: boolean & tags.Default< true >;
+	trackClicks: boolean & tags.Default< true >;
+	emitBrowserEvents: boolean & tags.Default< true >;
+	emitKexpLayer: boolean & tags.Default< false >;
+	emitDataLayer: boolean & tags.Default< false >;
+	emitClarityHook: boolean & tags.Default< false >;
 	blockInstanceId: string & tags.MinLength< 8 > & tags.MaxLength< 64 >;
 }
 
 export interface AbTestVariantAttributes {
-	variantKey: VariantKey;
-	variantLabel: string & tags.MinLength< 1 > & tags.MaxLength< 40 >;
+	variantKey: VariantKey & tags.Default< 'a' >;
+	variantLabel: string &
+		tags.MinLength< 1 > &
+		tags.MaxLength< 40 > &
+		tags.Default< 'Variant A' >;
 }
 
 export interface AbTestVariantStatsSnapshot {
@@ -74,7 +83,12 @@ export interface AbTestWinnerEvaluationSnapshot {
 	status: WinnerLifecycleState;
 	metric: AutomaticMetric;
 	winner?: VariantKey;
-	windowDays: number & tags.Minimum< 1 > & tags.Maximum< 365 > & tags.Type< 'uint32' >;
+	evaluatedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	lockedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	windowDays: number &
+		tags.Minimum< 1 > &
+		tags.Maximum< 365 > &
+		tags.Type< 'uint32' >;
 	variants: AbTestVariantStatsSnapshot[];
 }
 
@@ -89,52 +103,55 @@ export interface AbTestRuntimeConfiguration {
 	winnerMode: WinnerMode;
 	manualWinner?: VariantKey;
 	automaticMetric: AutomaticMetric;
+	minimumImpressionsPerVariant: number &
+		tags.Minimum< 0 > &
+		tags.Type< 'uint32' >;
+	minimumClicksPerVariant: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	evaluationWindowDays: number &
+		tags.Minimum< 1 > &
+		tags.Maximum< 365 > &
+		tags.Type< 'uint32' >;
 	lockWinnerAfterSelection: boolean;
 	trackImpressions: boolean;
 	trackClicks: boolean;
+	emitBrowserEvents: boolean;
+	emitKexpLayer: boolean;
+	emitDataLayer: boolean;
+	emitClarityHook: boolean;
 }
 
-// Temporary scaffold attributes while the block is still using the persistence starter UI.
-export interface AbTestBlockAttributes {
-	content: string &
-		tags.MinLength< 1 > &
-		tags.MaxLength< 250 > &
-		tags.Default< 'Ab Test Block persistence block' >;
-	alignment?: TextAlignment & tags.Default< 'left' >;
-	isVisible?: boolean & tags.Default< true >;
-	showCount?: boolean & tags.Default< true >;
-	buttonLabel?: string &
-		tags.MinLength< 1 > &
-		tags.MaxLength< 40 > &
-		tags.Default< 'Persist Count' >;
-	resourceKey?: string &
-		tags.MinLength< 1 > &
-		tags.MaxLength< 100 > &
-		tags.Default< 'primary' >;
-}
-
-export interface AbTestBlockContext {
-	buttonLabel: string;
-	canWrite: boolean;
-	count: number;
-	persistencePolicy: 'authenticated' | 'public';
+export interface AbTestViewContext extends AbTestRuntimeConfiguration {
 	postId: number;
-	publicWriteExpiresAt?: number;
 	publicWriteToken?: string;
-	resourceKey: string;
+	publicWriteExpiresAt?: number;
 	restNonce?: string;
-	storage: 'post-meta' | 'custom-table';
-	isVisible: boolean;
+	stickyStorageKey: string;
+	variantKeys: VariantKey[];
+	winnerEvaluation: AbTestWinnerEvaluationSnapshot;
 }
 
-export interface AbTestBlockState {
-	canWrite: boolean;
-	count: number;
+export interface AbTestViewState {
+	assignment?: VariantKey;
+	assignmentSource?: AssignmentSource;
+	debugLabel?: string;
 	error?: string;
-	isHydrated: boolean;
-	isLoading: boolean;
-	isSaving: boolean;
-	isVisible: boolean;
+	isPreview: boolean;
+	isReady: boolean;
+	winner?: VariantKey;
+	winnerStatus: WinnerLifecycleState;
 }
 
-export type AbTestBlockValidationResult = ValidationResult< AbTestBlockAttributes >;
+export interface AbTestBrowserEventPayload {
+	postId: number;
+	blockInstanceId: string;
+	experimentId: string;
+	variant: VariantKey;
+	variantCount: VariantCount;
+	weights: AbTestTrafficWeights;
+	source: AssignmentSource;
+	winnerMode: WinnerMode;
+	winner?: VariantKey;
+	preview: boolean;
+	eventType?: EventType;
+	timestamp: number;
+}

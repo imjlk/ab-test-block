@@ -1,0 +1,39 @@
+.wp-block-abtest-block-variant {
+	border: 1px solid rgba(112, 82, 18, 0.18);
+	border-radius: 18px;
+	padding: 16px;
+	background: rgba(255, 255, 255, 0.78);
+
+	& + & {
+		margin-top: 12px;
+	}
+
+	&__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	&__eyebrow {
+		margin: 0 0 4px;
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: #997332;
+	}
+
+	h4 {
+		margin: 0;
+		font-size: 18px;
+	}
+
+	&__placeholder {
+		margin: 12px 0 0;
+		color: #655947;
+	}
+
+	&.is-collapsed {
+		opacity: 0.88;
+	}
+}

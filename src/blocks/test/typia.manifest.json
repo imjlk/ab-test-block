@@ -1,0 +1,746 @@
+{
+	"attributes": {
+		"experimentId": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 191,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 1,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "experiment",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "experiment",
+				"enum": null,
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"variantCount": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": 2,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "number",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": 2,
+				"enum": [
+					2,
+					3
+				],
+				"hasDefault": true,
+				"type": "number"
+			}
+		},
+		"weights": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": null,
+				"hasDefault": false
+			},
+			"ts": {
+				"items": null,
+				"kind": "object",
+				"properties": {
+					"a": {
+						"typia": {
+							"constraints": {
+								"exclusiveMaximum": null,
+								"exclusiveMinimum": null,
+								"format": null,
+								"maxLength": null,
+								"maxItems": null,
+								"maximum": 100,
+								"minLength": null,
+								"minItems": null,
+								"minimum": 0,
+								"multipleOf": null,
+								"pattern": null,
+								"typeTag": null
+							},
+							"defaultValue": null,
+							"hasDefault": false
+						},
+						"ts": {
+							"items": null,
+							"kind": "number",
+							"properties": null,
+							"required": true,
+							"union": null
+						},
+						"wp": {
+							"defaultValue": null,
+							"enum": null,
+							"hasDefault": false,
+							"type": "number"
+						}
+					},
+					"b": {
+						"typia": {
+							"constraints": {
+								"exclusiveMaximum": null,
+								"exclusiveMinimum": null,
+								"format": null,
+								"maxLength": null,
+								"maxItems": null,
+								"maximum": 100,
+								"minLength": null,
+								"minItems": null,
+								"minimum": 0,
+								"multipleOf": null,
+								"pattern": null,
+								"typeTag": null
+							},
+							"defaultValue": null,
+							"hasDefault": false
+						},
+						"ts": {
+							"items": null,
+							"kind": "number",
+							"properties": null,
+							"required": true,
+							"union": null
+						},
+						"wp": {
+							"defaultValue": null,
+							"enum": null,
+							"hasDefault": false,
+							"type": "number"
+						}
+					},
+					"c": {
+						"typia": {
+							"constraints": {
+								"exclusiveMaximum": null,
+								"exclusiveMinimum": null,
+								"format": null,
+								"maxLength": null,
+								"maxItems": null,
+								"maximum": 100,
+								"minLength": null,
+								"minItems": null,
+								"minimum": 0,
+								"multipleOf": null,
+								"pattern": null,
+								"typeTag": null
+							},
+							"defaultValue": null,
+							"hasDefault": false
+						},
+						"ts": {
+							"items": null,
+							"kind": "number",
+							"properties": null,
+							"required": false,
+							"union": null
+						},
+						"wp": {
+							"defaultValue": null,
+							"enum": null,
+							"hasDefault": false,
+							"type": "number"
+						}
+					}
+				},
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": null,
+				"enum": null,
+				"hasDefault": false,
+				"type": "object"
+			}
+		},
+		"previewQueryKey": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 50,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 1,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "abtest",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "abtest",
+				"enum": null,
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"stickyAssignment": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"winnerMode": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "off",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "off",
+				"enum": [
+					"off",
+					"manual",
+					"automatic"
+				],
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"manualWinner": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": null,
+				"hasDefault": false
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": null,
+				"enum": [
+					"a",
+					"b",
+					"c"
+				],
+				"hasDefault": false,
+				"type": "string"
+			}
+		},
+		"automaticMetric": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "ctr",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "ctr",
+				"enum": [
+					"ctr"
+				],
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"minimumImpressionsPerVariant": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": 0,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": "uint32"
+				},
+				"defaultValue": 100,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "number",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": 100,
+				"enum": null,
+				"hasDefault": true,
+				"type": "number"
+			}
+		},
+		"minimumClicksPerVariant": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": 0,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": "uint32"
+				},
+				"defaultValue": 1,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "number",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": 1,
+				"enum": null,
+				"hasDefault": true,
+				"type": "number"
+			}
+		},
+		"evaluationWindowDays": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": 365,
+					"minLength": null,
+					"minItems": null,
+					"minimum": 1,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": "uint32"
+				},
+				"defaultValue": 14,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "number",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": 14,
+				"enum": null,
+				"hasDefault": true,
+				"type": "number"
+			}
+		},
+		"lockWinnerAfterSelection": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"trackImpressions": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"trackClicks": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"emitBrowserEvents": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"emitKexpLayer": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": false,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": false,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"emitDataLayer": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": false,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": false,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"emitClarityHook": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": false,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": false,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"blockInstanceId": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 64,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 8,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": null,
+				"hasDefault": false
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": null,
+				"enum": null,
+				"hasDefault": false,
+				"type": "string"
+			}
+		}
+	},
+	"manifestVersion": 2,
+	"sourceType": "AbTestExperimentAttributes"
+}

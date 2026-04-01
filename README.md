@@ -1,20 +1,23 @@
-# Ab Test Block
+# A/B Test Block
 
-A/B test block starter built on the `wp-typia` persistence scaffold.
+Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content experiments directly inside the editor.
 
-## Current Baseline
+## What It Includes
 
-This project still runs the persistence starter's sample counter so the generated REST and interactivity wiring stay intact while the block is refactored.
+-   One top-level `A/B Test` block plus an internal `Variant` child block
+-   A/B or A/B/C authoring with fixed variant slots
+-   Weighted delivery, sticky assignment, query-string preview overrides
+-   Manual winner and CTR-based automatic winner
+-   Viewable impression and primary CTA click aggregation through REST + custom table
+-   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 
-## A/B Experiment Groundwork
+## Tracking Semantics
 
-- `src/types.ts` now includes spec-aligned experiment contracts for parent attributes, variant attributes, runtime config, and winner evaluation snapshots.
-- `src/api-types.ts` now includes the next REST payloads for event ingestion, aggregate rows, and winner reevaluation.
-- PHP prefixes stay snake_case for WordPress internals, while the package name and text domain use kebab-case.
-
-## Template
-
-persistence
+-   `impression` means the active variant stays at least 50% visible for 1 second.
+-   `click` means the first primary CTA click for the block on the current page.
+-   Mark a CTA explicitly with the Additional CSS class `abtest-cta`.
+-   For custom markup, use the `data-abtest-cta` attribute instead.
+-   If no CTA marker exists inside the active variant, links and buttons fall back automatically.
 
 ## Development
 
@@ -23,22 +26,55 @@ bun install
 bun run start
 ```
 
-## Build
+## Validation
 
 ```bash
+bun run typecheck
+bun run lint
 bun run build
 ```
 
-## Type Sync
+## Local WordPress Validation
 
 ```bash
-bun run sync-types
+bun run env:start
 ```
 
-`src/types.ts` remains the source of truth for `block.json` and `typia.manifest.json`.
+The local site runs at `http://localhost:8890/wp-admin` with username `admin` and password `password`.
 
-## Next Steps
+Suggested smoke-test loop:
 
-1. Replace the sample counter attributes in `src/types.ts` with the real parent block attributes once the editor UI starts moving to the A/B experiment model.
-2. Add the hidden `Variant` child block and switch the editor to `InnerBlocks`-based parent/child composition.
-3. Replace the starter counter endpoint with `/event` and `/reevaluate` routes backed by the experiment stats table.
+1. Insert the `A/B Test` block in a new post.
+2. Confirm A/B variants are created automatically and `Variant` is hidden from the inserter.
+3. Add and remove Variant C, adjust weights, save, reload, and confirm there is no invalid block warning.
+4. Preview with both `?abtest=experiment_id:b` and the block-specific preview key.
+5. Confirm frontend assignment, sticky behavior, viewable impressions, and CTA click tracking on a published post.
+
+Stop or reset the environment with:
+
+```bash
+bun run env:stop
+bun run env:destroy
+```
+
+## Packaging
+
+```bash
+bun run plugin-zip
+```
+
+This generates a submission-ready zip that includes the built plugin files under the `ab-test-block` root folder.
+
+## Code Structure
+
+-   `src/types.ts`: shared experiment domain types
+-   `src/blocks/test`: parent block editor, render, and view runtime
+-   `src/blocks/variant`: internal child block editor and save markup
+-   `ab-test-block.php`: block registration, stats storage, token verification, REST routes
+-   `src/api-types.ts` and `src/api-schemas`: runtime REST contracts
+
+## Generated Artifacts
+
+`bun run sync-types` generates block metadata and PHP validators for the parent and child blocks.
+
+`bun run sync-rest` generates JSON Schema and OpenAPI files for the runtime event and reevaluation endpoints.

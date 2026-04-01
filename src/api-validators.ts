@@ -1,32 +1,37 @@
 import typia from 'typia';
 
-import {
-	toValidationResult,
-	type ValidationResult,
-} from '@wp-typia/rest';
+import { toValidationResult, type ValidationResult } from '@wp-typia/rest';
 import type {
-	AbTestBlockCounterQuery,
-	AbTestBlockCounterResponse,
-	AbTestBlockIncrementRequest,
+	AbTestBlockRecordEventRequest,
+	AbTestBlockRecordEventResponse,
+	AbTestBlockReevaluateRequest,
+	AbTestBlockReevaluateResponse,
 } from './api-types';
 
-const validateCounterQuery = typia.createValidate< AbTestBlockCounterQuery >();
-const validateIncrementRequest =
-	typia.createValidate< AbTestBlockIncrementRequest >();
-const validateCounterResponse =
-	typia.createValidate< AbTestBlockCounterResponse >();
+const validateRecordEventRequest =
+	typia.createValidate< AbTestBlockRecordEventRequest >();
+const validateRecordEventResponse =
+	typia.createValidate< AbTestBlockRecordEventResponse >();
+const validateReevaluateRequest =
+	typia.createValidate< AbTestBlockReevaluateRequest >();
+const validateReevaluateResponse =
+	typia.createValidate< AbTestBlockReevaluateResponse >();
 
 export const apiValidators = {
-	counterQuery: (
+	recordEventRequest: (
 		input: unknown
-	): ValidationResult< AbTestBlockCounterQuery > =>
-		toValidationResult( validateCounterQuery( input ) ),
-	counterResponse: (
+	): ValidationResult< AbTestBlockRecordEventRequest > =>
+		toValidationResult( validateRecordEventRequest( input ) ),
+	recordEventResponse: (
 		input: unknown
-	): ValidationResult< AbTestBlockCounterResponse > =>
-		toValidationResult( validateCounterResponse( input ) ),
-	incrementRequest: (
+	): ValidationResult< AbTestBlockRecordEventResponse > =>
+		toValidationResult( validateRecordEventResponse( input ) ),
+	reevaluateRequest: (
 		input: unknown
-	): ValidationResult< AbTestBlockIncrementRequest > =>
-		toValidationResult( validateIncrementRequest( input ) ),
+	): ValidationResult< AbTestBlockReevaluateRequest > =>
+		toValidationResult( validateReevaluateRequest( input ) ),
+	reevaluateResponse: (
+		input: unknown
+	): ValidationResult< AbTestBlockReevaluateResponse > =>
+		toValidationResult( validateReevaluateResponse( input ) ),
 };

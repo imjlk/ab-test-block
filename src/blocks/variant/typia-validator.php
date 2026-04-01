@@ -7,23 +7,23 @@ declare(strict_types=1);
 return new class {
 	private array $manifest = [
 			'attributes' => [
-				'content' => [
+				'variantKey' => [
 					'typia' => [
 						'constraints' => [
 							'exclusiveMaximum' => null,
 							'exclusiveMinimum' => null,
 							'format' => null,
-							'maxLength' => 250,
+							'maxLength' => null,
 							'maxItems' => null,
 							'maximum' => null,
-							'minLength' => 1,
+							'minLength' => null,
 							'minItems' => null,
 							'minimum' => null,
 							'multipleOf' => null,
 							'pattern' => null,
 							'typeTag' => null
 						],
-						'defaultValue' => 'Ab Test Block persistence block',
+						'defaultValue' => 'a',
 						'hasDefault' => true
 					],
 					'ts' => [
@@ -34,117 +34,17 @@ return new class {
 						'union' => null
 					],
 					'wp' => [
-						'defaultValue' => 'Ab Test Block persistence block',
-						'enum' => null,
-						'hasDefault' => true,
-						'type' => 'string'
-					]
-				],
-				'alignment' => [
-					'typia' => [
-						'constraints' => [
-							'exclusiveMaximum' => null,
-							'exclusiveMinimum' => null,
-							'format' => null,
-							'maxLength' => null,
-							'maxItems' => null,
-							'maximum' => null,
-							'minLength' => null,
-							'minItems' => null,
-							'minimum' => null,
-							'multipleOf' => null,
-							'pattern' => null,
-							'typeTag' => null
-						],
-						'defaultValue' => 'left',
-						'hasDefault' => true
-					],
-					'ts' => [
-						'items' => null,
-						'kind' => 'string',
-						'properties' => null,
-						'required' => false,
-						'union' => null
-					],
-					'wp' => [
-						'defaultValue' => 'left',
+						'defaultValue' => 'a',
 						'enum' => [
-							'left',
-							'center',
-							'right',
-							'justify'
+							'a',
+							'b',
+							'c'
 						],
 						'hasDefault' => true,
 						'type' => 'string'
 					]
 				],
-				'isVisible' => [
-					'typia' => [
-						'constraints' => [
-							'exclusiveMaximum' => null,
-							'exclusiveMinimum' => null,
-							'format' => null,
-							'maxLength' => null,
-							'maxItems' => null,
-							'maximum' => null,
-							'minLength' => null,
-							'minItems' => null,
-							'minimum' => null,
-							'multipleOf' => null,
-							'pattern' => null,
-							'typeTag' => null
-						],
-						'defaultValue' => true,
-						'hasDefault' => true
-					],
-					'ts' => [
-						'items' => null,
-						'kind' => 'boolean',
-						'properties' => null,
-						'required' => false,
-						'union' => null
-					],
-					'wp' => [
-						'defaultValue' => true,
-						'enum' => null,
-						'hasDefault' => true,
-						'type' => 'boolean'
-					]
-				],
-				'showCount' => [
-					'typia' => [
-						'constraints' => [
-							'exclusiveMaximum' => null,
-							'exclusiveMinimum' => null,
-							'format' => null,
-							'maxLength' => null,
-							'maxItems' => null,
-							'maximum' => null,
-							'minLength' => null,
-							'minItems' => null,
-							'minimum' => null,
-							'multipleOf' => null,
-							'pattern' => null,
-							'typeTag' => null
-						],
-						'defaultValue' => true,
-						'hasDefault' => true
-					],
-					'ts' => [
-						'items' => null,
-						'kind' => 'boolean',
-						'properties' => null,
-						'required' => false,
-						'union' => null
-					],
-					'wp' => [
-						'defaultValue' => true,
-						'enum' => null,
-						'hasDefault' => true,
-						'type' => 'boolean'
-					]
-				],
-				'buttonLabel' => [
+				'variantLabel' => [
 					'typia' => [
 						'constraints' => [
 							'exclusiveMaximum' => null,
@@ -160,51 +60,18 @@ return new class {
 							'pattern' => null,
 							'typeTag' => null
 						],
-						'defaultValue' => 'Persist Count',
+						'defaultValue' => 'Variant A',
 						'hasDefault' => true
 					],
 					'ts' => [
 						'items' => null,
 						'kind' => 'string',
 						'properties' => null,
-						'required' => false,
+						'required' => true,
 						'union' => null
 					],
 					'wp' => [
-						'defaultValue' => 'Persist Count',
-						'enum' => null,
-						'hasDefault' => true,
-						'type' => 'string'
-					]
-				],
-				'resourceKey' => [
-					'typia' => [
-						'constraints' => [
-							'exclusiveMaximum' => null,
-							'exclusiveMinimum' => null,
-							'format' => null,
-							'maxLength' => 100,
-							'maxItems' => null,
-							'maximum' => null,
-							'minLength' => 1,
-							'minItems' => null,
-							'minimum' => null,
-							'multipleOf' => null,
-							'pattern' => null,
-							'typeTag' => null
-						],
-						'defaultValue' => 'primary',
-						'hasDefault' => true
-					],
-					'ts' => [
-						'items' => null,
-						'kind' => 'string',
-						'properties' => null,
-						'required' => false,
-						'union' => null
-					],
-					'wp' => [
-						'defaultValue' => 'primary',
+						'defaultValue' => 'Variant A',
 						'enum' => null,
 						'hasDefault' => true,
 						'type' => 'string'
@@ -212,7 +79,7 @@ return new class {
 				]
 			],
 			'manifestVersion' => 2,
-			'sourceType' => 'AbTestBlockAttributes'
+			'sourceType' => 'AbTestVariantAttributes'
 		];
 
 	public function apply_defaults(array $attributes): array

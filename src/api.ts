@@ -5,73 +5,89 @@ import {
 } from '@wp-typia/rest';
 
 import {
-	type AbTestBlockCounterQuery,
-	type AbTestBlockCounterResponse,
-	type AbTestBlockIncrementRequest,
+	type AbTestBlockRecordEventRequest,
+	type AbTestBlockRecordEventResponse,
+	type AbTestBlockReevaluateRequest,
+	type AbTestBlockReevaluateResponse,
 } from './api-types';
 import { apiValidators } from './api-validators';
 
-const COUNTER_PATH = '/create-block/v1/ab-test-block/counter';
+const EVENT_PATH = '/abtest-block/v1/event';
+const REEVALUATE_PATH = '/abtest-block/v1/reevaluate';
 
 function resolveRestNonce( fallback?: string ): string | undefined {
 	if ( typeof fallback === 'string' && fallback.length > 0 ) {
 		return fallback;
 	}
 
-	const wpApiSettings = ( window as typeof window & {
-		wpApiSettings?: { nonce?: string };
-	} ).wpApiSettings;
+	const wpApiSettings = (
+		window as typeof window & {
+			wpApiSettings?: { nonce?: string };
+		}
+	 ).wpApiSettings;
 
-	return typeof wpApiSettings?.nonce === 'string' && wpApiSettings.nonce.length > 0
+	return typeof wpApiSettings?.nonce === 'string' &&
+		wpApiSettings.nonce.length > 0
 		? wpApiSettings.nonce
 		: undefined;
 }
 
-export const counterEndpoint = createEndpoint<
-	AbTestBlockCounterQuery,
-	AbTestBlockCounterResponse
+export const recordEventEndpoint = createEndpoint<
+	AbTestBlockRecordEventRequest,
+	AbTestBlockRecordEventResponse
 >( {
 	buildRequestOptions: () => ( {
-		url: resolveRestRouteUrl( COUNTER_PATH ),
-	} ),
-	method: 'GET',
-	path: COUNTER_PATH,
-	validateRequest: apiValidators.counterQuery,
-	validateResponse: apiValidators.counterResponse,
-} );
-
-export const incrementCounterEndpoint = createEndpoint<
-	AbTestBlockIncrementRequest,
-	AbTestBlockCounterResponse
->( {
-	buildRequestOptions: () => ( {
-		url: resolveRestRouteUrl( COUNTER_PATH ),
+		url: resolveRestRouteUrl( EVENT_PATH ),
 	} ),
 	method: 'POST',
-	path: COUNTER_PATH,
-	validateRequest: apiValidators.incrementRequest,
-	validateResponse: apiValidators.counterResponse,
+	path: EVENT_PATH,
+	validateRequest: apiValidators.recordEventRequest,
+	validateResponse: apiValidators.recordEventResponse,
 } );
 
-export function fetchCounter(
-	request: AbTestBlockCounterQuery
-) {
-	return callEndpoint( counterEndpoint, request );
-}
+export const reevaluateExperimentEndpoint = createEndpoint<
+	AbTestBlockReevaluateRequest,
+	AbTestBlockReevaluateResponse
+>( {
+	buildRequestOptions: () => ( {
+		url: resolveRestRouteUrl( REEVALUATE_PATH ),
+	} ),
+	method: 'POST',
+	path: REEVALUATE_PATH,
+	validateRequest: apiValidators.reevaluateRequest,
+	validateResponse: apiValidators.reevaluateResponse,
+} );
 
-export function incrementCounter(
-	request: AbTestBlockIncrementRequest,
+export function recordEvent(
+	request: AbTestBlockRecordEventRequest,
 	restNonce?: string
 ) {
 	const nonce = resolveRestNonce( restNonce );
 
-	return callEndpoint( incrementCounterEndpoint, request, {
+	return callEndpoint( recordEventEndpoint, request, {
 		requestOptions: nonce
 			? {
 					headers: {
 						'X-WP-Nonce': nonce,
 					},
-				}
+			  }
+			: undefined,
+	} );
+}
+
+export function reevaluateExperiment(
+	request: AbTestBlockReevaluateRequest,
+	restNonce?: string
+) {
+	const nonce = resolveRestNonce( restNonce );
+
+	return callEndpoint( reevaluateExperimentEndpoint, request, {
+		requestOptions: nonce
+			? {
+					headers: {
+						'X-WP-Nonce': nonce,
+					},
+			  }
 			: undefined,
 	} );
 }

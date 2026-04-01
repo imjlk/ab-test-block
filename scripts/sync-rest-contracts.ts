@@ -3,16 +3,20 @@ import { syncTypeSchemas } from '@wp-typia/create/metadata-core';
 
 const CONTRACTS = [
 	{
-		baseName: 'counter-query',
-		sourceTypeName: 'AbTestBlockCounterQuery',
+		baseName: 'record-event-request',
+		sourceTypeName: 'AbTestBlockRecordEventRequest',
 	},
 	{
-		baseName: 'increment-request',
-		sourceTypeName: 'AbTestBlockIncrementRequest',
+		baseName: 'record-event-response',
+		sourceTypeName: 'AbTestBlockRecordEventResponse',
 	},
 	{
-		baseName: 'counter-response',
-		sourceTypeName: 'AbTestBlockCounterResponse',
+		baseName: 'reevaluate-request',
+		sourceTypeName: 'AbTestBlockReevaluateRequest',
+	},
+	{
+		baseName: 'reevaluate-response',
+		sourceTypeName: 'AbTestBlockReevaluateResponse',
 	},
 ] as const;
 
@@ -30,7 +34,9 @@ async function main() {
 		} );
 	}
 
-	console.log( '✅ REST schemas and OpenAPI documents were generated from TypeScript contracts!' );
+	console.log(
+		'✅ REST schemas and OpenAPI documents were generated from TypeScript contracts!'
+	);
 }
 
 main().catch( ( error ) => {

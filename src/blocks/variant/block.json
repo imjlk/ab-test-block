@@ -1,0 +1,42 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "abtest-block/variant",
+	"version": "0.2.0",
+	"title": "Variant",
+	"category": "design",
+	"icon": "excerpt-view",
+	"description": "Internal variant block for the A/B Test block.",
+	"parent": [
+		"abtest-block/test"
+	],
+	"supports": {
+		"html": false,
+		"inserter": false,
+		"reusable": false
+	},
+	"textdomain": "ab-test-block",
+	"editorScript": "file:./index.js",
+	"editorStyle": "file:./index.css",
+	"attributes": {
+		"variantKey": {
+			"type": "string",
+			"default": "a",
+			"enum": [
+				"a",
+				"b",
+				"c"
+			]
+		},
+		"variantLabel": {
+			"type": "string",
+			"default": "Variant A"
+		}
+	},
+	"example": {
+		"attributes": {
+			"variantKey": "a",
+			"variantLabel": "Variant A"
+		}
+	}
+}

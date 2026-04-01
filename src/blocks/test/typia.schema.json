@@ -1,0 +1,153 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"additionalProperties": false,
+	"properties": {
+		"experimentId": {
+			"default": "experiment",
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 191
+		},
+		"variantCount": {
+			"enum": [
+				2,
+				3
+			],
+			"default": 2,
+			"type": "number"
+		},
+		"weights": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"a": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 100
+				},
+				"b": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 100
+				},
+				"c": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 100
+				}
+			},
+			"required": [
+				"a",
+				"b"
+			]
+		},
+		"previewQueryKey": {
+			"default": "abtest",
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 50
+		},
+		"stickyAssignment": {
+			"default": true,
+			"type": "boolean"
+		},
+		"winnerMode": {
+			"enum": [
+				"off",
+				"manual",
+				"automatic"
+			],
+			"default": "off",
+			"type": "string"
+		},
+		"manualWinner": {
+			"enum": [
+				"a",
+				"b",
+				"c"
+			],
+			"type": "string"
+		},
+		"automaticMetric": {
+			"enum": [
+				"ctr"
+			],
+			"default": "ctr",
+			"type": "string"
+		},
+		"minimumImpressionsPerVariant": {
+			"default": 100,
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 0
+		},
+		"minimumClicksPerVariant": {
+			"default": 1,
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 0
+		},
+		"evaluationWindowDays": {
+			"default": 14,
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 1,
+			"maximum": 365
+		},
+		"lockWinnerAfterSelection": {
+			"default": true,
+			"type": "boolean"
+		},
+		"trackImpressions": {
+			"default": true,
+			"type": "boolean"
+		},
+		"trackClicks": {
+			"default": true,
+			"type": "boolean"
+		},
+		"emitBrowserEvents": {
+			"default": true,
+			"type": "boolean"
+		},
+		"emitKexpLayer": {
+			"default": false,
+			"type": "boolean"
+		},
+		"emitDataLayer": {
+			"default": false,
+			"type": "boolean"
+		},
+		"emitClarityHook": {
+			"default": false,
+			"type": "boolean"
+		},
+		"blockInstanceId": {
+			"type": "string",
+			"minLength": 8,
+			"maxLength": 64
+		}
+	},
+	"required": [
+		"experimentId",
+		"variantCount",
+		"weights",
+		"previewQueryKey",
+		"stickyAssignment",
+		"winnerMode",
+		"automaticMetric",
+		"minimumImpressionsPerVariant",
+		"minimumClicksPerVariant",
+		"evaluationWindowDays",
+		"lockWinnerAfterSelection",
+		"trackImpressions",
+		"trackClicks",
+		"emitBrowserEvents",
+		"emitKexpLayer",
+		"emitDataLayer",
+		"emitClarityHook",
+		"blockInstanceId"
+	],
+	"title": "AbTestExperimentAttributes",
+	"type": "object"
+}

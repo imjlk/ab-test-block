@@ -1,0 +1,61 @@
+.wp-block-abtest-block-test {
+	border: 1px solid #d9d4c8;
+	border-radius: 20px;
+	padding: 20px;
+	background:
+		linear-gradient(135deg, rgba(255, 248, 232, 0.9), rgba(250, 243, 228, 0.96)),
+		#faf7ef;
+
+	&__header {
+		display: flex;
+		justify-content: space-between;
+		gap: 16px;
+		align-items: flex-start;
+		margin-bottom: 16px;
+	}
+
+	&__eyebrow {
+		margin: 0 0 6px;
+		font-size: 11px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: #8f6c2e;
+	}
+
+	&__title {
+		margin: 0;
+		font-size: 24px;
+		line-height: 1.2;
+	}
+
+	&__summary {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+
+		span {
+			display: inline-flex;
+			padding: 6px 10px;
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.72);
+			font-size: 12px;
+		}
+	}
+
+	&__debug {
+		margin: 8px 0 0;
+		color: #5c5441;
+		font-size: 13px;
+	}
+
+	&__variants {
+		margin-top: 18px;
+	}
+
+	&__panel-actions {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+}

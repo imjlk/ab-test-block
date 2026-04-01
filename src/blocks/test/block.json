@@ -1,0 +1,149 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "abtest-block/test",
+	"version": "0.2.0",
+	"title": "A/B Test",
+	"category": "design",
+	"icon": "randomize",
+	"description": "Create A/B or A/B/C experiments with weighted delivery and winner selection.",
+	"keywords": [
+		"ab test",
+		"experiment",
+		"split test"
+	],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"interactivity": true
+	},
+	"allowedBlocks": [
+		"abtest-block/variant"
+	],
+	"textdomain": "ab-test-block",
+	"editorScript": "file:./index.js",
+	"editorStyle": "file:./index.css",
+	"style": "file:./style-index.css",
+	"viewScriptModule": "file:./view.js",
+	"render": "file:./render.php",
+	"attributes": {
+		"experimentId": {
+			"type": "string",
+			"default": "experiment"
+		},
+		"variantCount": {
+			"type": "number",
+			"default": 2,
+			"enum": [
+				2,
+				3
+			]
+		},
+		"weights": {
+			"type": "object"
+		},
+		"previewQueryKey": {
+			"type": "string",
+			"default": "abtest"
+		},
+		"stickyAssignment": {
+			"type": "boolean",
+			"default": true
+		},
+		"winnerMode": {
+			"type": "string",
+			"default": "off",
+			"enum": [
+				"off",
+				"manual",
+				"automatic"
+			]
+		},
+		"manualWinner": {
+			"type": "string",
+			"enum": [
+				"a",
+				"b",
+				"c"
+			]
+		},
+		"automaticMetric": {
+			"type": "string",
+			"default": "ctr",
+			"enum": [
+				"ctr"
+			]
+		},
+		"minimumImpressionsPerVariant": {
+			"type": "number",
+			"default": 100
+		},
+		"minimumClicksPerVariant": {
+			"type": "number",
+			"default": 1
+		},
+		"evaluationWindowDays": {
+			"type": "number",
+			"default": 14
+		},
+		"lockWinnerAfterSelection": {
+			"type": "boolean",
+			"default": true
+		},
+		"trackImpressions": {
+			"type": "boolean",
+			"default": true
+		},
+		"trackClicks": {
+			"type": "boolean",
+			"default": true
+		},
+		"emitBrowserEvents": {
+			"type": "boolean",
+			"default": true
+		},
+		"emitKexpLayer": {
+			"type": "boolean",
+			"default": false
+		},
+		"emitDataLayer": {
+			"type": "boolean",
+			"default": false
+		},
+		"emitClarityHook": {
+			"type": "boolean",
+			"default": false
+		},
+		"blockInstanceId": {
+			"type": "string"
+		}
+	},
+	"example": {
+		"attributes": {
+			"experimentId": "experiment",
+			"variantCount": 2,
+			"weights": {
+				"a": 0,
+				"b": 0,
+				"c": 0
+			},
+			"previewQueryKey": "abtest",
+			"stickyAssignment": true,
+			"winnerMode": "off",
+			"manualWinner": "a",
+			"automaticMetric": "ctr",
+			"minimumImpressionsPerVariant": 100,
+			"minimumClicksPerVariant": 1,
+			"evaluationWindowDays": 14,
+			"lockWinnerAfterSelection": true,
+			"trackImpressions": true,
+			"trackClicks": true,
+			"emitBrowserEvents": true,
+			"emitKexpLayer": false,
+			"emitDataLayer": false,
+			"emitClarityHook": false,
+			"blockInstanceId": "Example blockInstanceId"
+		}
+	}
+}

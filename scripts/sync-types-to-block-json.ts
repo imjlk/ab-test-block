@@ -2,35 +2,50 @@
 import { syncBlockMetadata } from '@wp-typia/create/metadata-core';
 
 async function main() {
-	const result = await syncBlockMetadata( {
-		blockJsonFile: 'src/block.json',
-		jsonSchemaFile: 'src/typia.schema.json',
-		manifestFile: 'src/typia.manifest.json',
-		openApiFile: 'src/typia.openapi.json',
-		sourceTypeName: 'AbTestBlockAttributes',
-		typesFile: 'src/types.ts',
-	} );
+	const blocks = [
+		{
+			blockJsonFile: 'src/blocks/test/block.json',
+			jsonSchemaFile: 'src/blocks/test/typia.schema.json',
+			manifestFile: 'src/blocks/test/typia.manifest.json',
+			openApiFile: 'src/blocks/test/typia.openapi.json',
+			sourceTypeName: 'AbTestExperimentAttributes',
+		},
+		{
+			blockJsonFile: 'src/blocks/variant/block.json',
+			jsonSchemaFile: 'src/blocks/variant/typia.schema.json',
+			manifestFile: 'src/blocks/variant/typia.manifest.json',
+			openApiFile: 'src/blocks/variant/typia.openapi.json',
+			sourceTypeName: 'AbTestVariantAttributes',
+		},
+	] as const;
 
-	console.log(
-		'✅ block.json, typia.manifest.json, typia-validator.php, typia.schema.json, and typia.openapi.json were generated from TypeScript types!'
-	);
-	console.log( '📝 Generated attributes:', result.attributeNames );
+	for ( const block of blocks ) {
+		const result = await syncBlockMetadata( {
+			...block,
+			typesFile: 'src/types.ts',
+		} );
 
-	if ( result.lossyProjectionWarnings.length > 0 ) {
-		console.warn(
-			'⚠️ Some Typia constraints were preserved only in typia.manifest.json:'
+		console.log(
+			`✅ Generated block metadata for ${ block.sourceTypeName }`
 		);
-		for ( const warning of result.lossyProjectionWarnings ) {
-			console.warn( `   - ${ warning }` );
+		console.log( '📝 Generated attributes:', result.attributeNames );
+
+		if ( result.lossyProjectionWarnings.length > 0 ) {
+			console.warn(
+				'⚠️ Some Typia constraints were preserved only in typia.manifest.json:'
+			);
+			for ( const warning of result.lossyProjectionWarnings ) {
+				console.warn( `   - ${ warning }` );
+			}
 		}
-	}
 
-	if ( result.phpGenerationWarnings.length > 0 ) {
-		console.warn(
-			'⚠️ Some Typia constraints are not yet enforced by typia-validator.php:'
-		);
-		for ( const warning of result.phpGenerationWarnings ) {
-			console.warn( `   - ${ warning }` );
+		if ( result.phpGenerationWarnings.length > 0 ) {
+			console.warn(
+				'⚠️ Some Typia constraints are not yet enforced by typia-validator.php:'
+			);
+			for ( const warning of result.phpGenerationWarnings ) {
+				console.warn( `   - ${ warning }` );
+			}
 		}
 	}
 }
