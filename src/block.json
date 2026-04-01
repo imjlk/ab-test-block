@@ -1,0 +1,53 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "create-block/ab-test-block",
+	"version": "0.1.0",
+	"title": "Ab Test Block",
+	"category": "widgets",
+	"icon": "database",
+	"description": "A persistence-aware WordPress block with Typia validation, typed REST contracts, and selectable public or authenticated write policies",
+	"example": {},
+	"supports": {
+		"html": false,
+		"align": true,
+		"anchor": true,
+		"className": true,
+		"interactivity": true
+	},
+	"attributes": {
+		"content": {
+			"type": "string",
+			"source": "html",
+			"selector": ".wp-block-ab-test-block__content",
+			"default": "Ab Test Block persistence block"
+		},
+		"alignment": {
+			"type": "string",
+			"enum": ["left", "center", "right"],
+			"default": "left"
+		},
+		"isVisible": {
+			"type": "boolean",
+			"default": true
+		},
+		"showCount": {
+			"type": "boolean",
+			"default": true
+		},
+		"buttonLabel": {
+			"type": "string",
+			"default": "Persist Count"
+		},
+		"resourceKey": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"textdomain": "ab_test_block",
+	"editorScript": "file:./index.js",
+	"editorStyle": "file:./index.css",
+	"style": "file:./style-index.css",
+	"viewScriptModule": "file:./interactivity.js",
+	"render": "file:./render.php"
+}

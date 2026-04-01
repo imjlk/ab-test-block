@@ -1,0 +1,46 @@
+.wp-block-ab-test-block {
+	border: 1px solid #dcdcde;
+	border-radius: 12px;
+	padding: 16px;
+	background: #fff;
+
+	&__meta {
+		color: #50575e;
+		font-size: 13px;
+		margin: 8px 0 0;
+	}
+}
+
+.wp-block-ab-test-block-frontend {
+	display: grid;
+	gap: 12px;
+	border: 1px solid #dcdcde;
+	border-radius: 12px;
+	padding: 16px;
+	background: #f6f7f7;
+
+	&__count {
+		display: inline-flex;
+		min-width: 3rem;
+		justify-content: center;
+		font-weight: 700;
+	}
+
+	&__notice,
+	&__error {
+		margin: 0;
+		font-size: 13px;
+	}
+
+	&__notice {
+		color: #50575e;
+	}
+
+	&__error {
+		color: #b32d2e;
+	}
+
+	button {
+		width: fit-content;
+	}
+}
