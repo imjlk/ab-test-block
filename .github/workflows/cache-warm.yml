@@ -1,0 +1,87 @@
+name: Warm CI Caches
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 1"
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.10"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  warm:
+    name: Warm Bun and wp-env caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Decide whether this scheduled run should execute
+        id: cadence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" != "schedule" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          iso_week="$(date -u +%V)"
+
+          if (( 10#${iso_week} % 2 == 1 )); then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.cadence.outputs.should_run == 'true'
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        if: steps.cadence.outputs.should_run == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        if: steps.cadence.outputs.should_run == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install cache
+        if: steps.cadence.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Cache wp-env home
+        if: steps.cadence.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.wp-env
+            ~/wp-env
+          key: wp-env-${{ runner.os }}-${{ hashFiles('.wp-env.json', 'package.json', 'bun.lock') }}
+          restore-keys: |
+            wp-env-${{ runner.os }}-
+
+      - name: Install dependencies
+        if: steps.cadence.outputs.should_run == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Warm wp-env cache
+        if: steps.cadence.outputs.should_run == 'true'
+        run: |
+          bun run env:stop || true
+          bun run env:start
+          bun run env:stop
+
+      - name: Skip off-week schedule
+        if: steps.cadence.outputs.should_run != 'true'
+        run: echo "Skipping cache warm on this week to keep a biweekly cadence."
