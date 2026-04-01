@@ -51,6 +51,19 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
+            - name: Validate Playground blueprints
+              run: |
+                  node <<'EOF'
+                  const fs = require('node:fs');
+
+                  for (const file of [
+                    '.wordpress-org/blueprints/blueprint.json',
+                    '.wordpress-org/blueprints/github-blueprint.json',
+                  ]) {
+                    JSON.parse(fs.readFileSync(file, 'utf8'));
+                  }
+                  EOF
+
             - name: Check version consistency
               run: |
                   node <<'EOF'

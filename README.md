@@ -25,6 +25,15 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `experimentId` is the logical experiment key and may be reused across multiple posts or pages.
 -   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
 
+## WordPress Playground
+
+-   Open the latest GitHub-based demo in Playground: [Open in Playground](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fimjlk%2Fab-test-block%2Fmain%2F.wordpress-org%2Fblueprints%2Fgithub-blueprint.json)
+-   `bun run playground:sync` regenerates the tracked blueprint files under `.wordpress-org/blueprints/`.
+-   `bun run playground:preview-link` prints the raw GitHub blueprint URL and the matching Playground link for the current repository remote.
+-   `.wordpress-org/blueprints/blueprint.json` is the WordPress.org preview blueprint that is meant to land in the plugin SVN assets path as `assets/blueprints/blueprint.json`.
+-   `bun run wordpress-org:copy-assets -- --target=/path/to/svn/assets` copies `.wordpress-org/*` into the exact SVN assets layout for future deployment automation.
+-   Pull requests from this repository get a Playground preview button in the PR description with the current branch build installed.
+
 ## Development
 
 ```bash
@@ -67,9 +76,21 @@ bun run env:destroy
 
 ```bash
 bun run plugin-zip
+bun run playground:sync
 ```
 
 This generates a submission-ready zip that includes the built plugin files under the `ab-test-block` root folder.
+
+The Playground blueprint sync keeps these repo-tracked files up to date:
+
+-   `.wordpress-org/blueprints/blueprint.json`
+-   `.wordpress-org/blueprints/github-blueprint.json`
+
+For future WordPress.org deployment automation, copy the tracked assets into an SVN checkout with:
+
+```bash
+bun run wordpress-org:copy-assets -- --target=/path/to/plugin-svn/assets
+```
 
 ## Code Structure
 

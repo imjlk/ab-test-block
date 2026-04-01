@@ -1,0 +1,152 @@
+name: Playground PR Preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: playground-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.10"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Build plugin zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release zip
+        run: bun run plugin-zip
+
+      - name: Upload built plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-plugin
+          path: ab-test-block.zip
+          retention-days: 7
+
+  expose-build:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Expose build artifact
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+    outputs:
+      artifact-url: ${{ steps.expose.outputs.artifact-url }}
+    steps:
+      - name: Expose built artifact on a public URL
+        id: expose
+        uses: WordPress/action-wp-playground-pr-preview/.github/actions/expose-artifact-on-public-url@v2
+        with:
+          artifact-name: built-plugin
+          pr-number: ${{ github.event.pull_request.number }}
+          commit-sha: ${{ github.sha }}
+          artifacts-to-keep: "2"
+
+  create-blueprint:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Create preview blueprint
+    runs-on: ubuntu-latest
+    needs: expose-build
+    timeout-minutes: 20
+    outputs:
+      blueprint: ${{ steps.blueprint.outputs.blueprint }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate inline blueprint
+        id: blueprint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          blueprint="$(
+            bun run playground:sync -- \
+              --plugin-zip-url='${{ needs.expose-build.outputs.artifact-url }}' \
+              --stdout-blueprint
+          )"
+
+          {
+            echo 'blueprint<<EOF'
+            echo "${blueprint}"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Publish preview button
+    runs-on: ubuntu-latest
+    needs: create-blueprint
+    timeout-minutes: 20
+    steps:
+      - name: Add Playground preview button
+        uses: WordPress/action-wp-playground-pr-preview@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: append-to-description
+          blueprint: ${{ needs.create-blueprint.outputs.blueprint }}
+          description-template: |
+            ### WordPress Playground Preview
+
+            {{PLAYGROUND_BUTTON}}
+
+            This preview installs the built plugin zip from this PR and opens a seeded editor demo post.
