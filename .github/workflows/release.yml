@@ -37,7 +37,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache Bun install cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -48,18 +48,37 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check tag matches plugin version
-        shell: bash
         run: |
-          set -euo pipefail
+          node <<'EOF'
+          const fs = require('node:fs');
 
-          package_version="$(node -p "require('./package.json').version")"
-          tag_version="${GITHUB_REF_NAME#v}"
-          plugin_version="$(sed -n 's/^ \\* Version:[[:space:]]*//p' ab-test-block.php | head -n1 | tr -d '\r')"
-          stable_tag="$(sed -n 's/^Stable tag:[[:space:]]*//p' readme.txt | head -n1 | tr -d '\r')"
+          const tagVersion = process.env.GITHUB_REF_NAME.replace(/^v/, '');
+          const packageVersion = JSON.parse(
+            fs.readFileSync('package.json', 'utf8')
+          ).version;
+          const pluginVersion = fs
+            .readFileSync('ab-test-block.php', 'utf8')
+            .match(/^ \* Version:\s*(.+)$/m)?.[1]
+            ?.trim();
+          const stableTag = fs
+            .readFileSync('readme.txt', 'utf8')
+            .match(/^Stable tag:\s*(.+)$/m)?.[1]
+            ?.trim();
 
-          [[ "${tag_version}" == "${package_version}" ]]
-          [[ "${plugin_version}" == "${package_version}" ]]
-          [[ "${stable_tag}" == "${package_version}" ]]
+          if (
+            tagVersion !== packageVersion ||
+            pluginVersion !== packageVersion ||
+            stableTag !== packageVersion
+          ) {
+            console.error({
+              tagVersion,
+              packageVersion,
+              pluginVersion,
+              stableTag,
+            });
+            process.exit(1);
+          }
+          EOF
 
       - name: Build release zip
         run: bun run plugin-zip

@@ -1,0 +1,12 @@
+[git]
+default_branch = "main"
+
+[github]
+repository = "imjlk/ab-test-block"
+
+[changesets]
+tags = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+
+[changelog]
+show_commit_hash = true
+show_acknowledgments = true

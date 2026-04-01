@@ -16,6 +16,8 @@
 	"scripts": {
 		"sync-types": "tsx scripts/sync-types-to-block-json.ts",
 		"sync-rest": "tsx scripts/sync-rest-contracts.ts",
+		"release:sync-version-files": "tsx scripts/sync-release-version.ts",
+		"release:prepare": "sampo release && bun run release:sync-version-files",
 		"build": "bun run sync-types && bun run sync-rest && wp-scripts build --experimental-modules",
 		"start": "bun run sync-types && bun run sync-rest && wp-scripts start --experimental-modules",
 		"dev": "bun run start",
