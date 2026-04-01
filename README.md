@@ -19,6 +19,12 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   For custom markup, use the `data-abtest-cta` attribute instead.
 -   If no CTA marker exists inside the active variant, links and buttons fall back automatically.
 
+## Experiment Identity
+
+-   A single block instance is identified by `postId + blockInstanceId`.
+-   `experimentId` is the logical experiment key and may be reused across multiple posts or pages.
+-   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
+
 ## Development
 
 ```bash

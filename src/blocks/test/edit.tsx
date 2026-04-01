@@ -32,7 +32,12 @@ import type {
 	VariantKey,
 	WinnerMode,
 } from '../../types';
-import { sanitizeParentAttributes } from './validators';
+import {
+	createExperimentAttributeUpdater,
+	createExperimentNestedAttributeUpdater,
+	getExperimentValidationState,
+	sanitizeParentAttributes,
+} from './validators';
 
 type BlockRecord = {
 	clientId: string;
@@ -153,6 +158,22 @@ export default function Edit( {
 	const stickyLabel = normalizedAttributes.stickyAssignment
 		? __( 'Sticky', 'ab-test-block' )
 		: __( 'Non-sticky', 'ab-test-block' );
+	const updateAttribute = useMemo(
+		() =>
+			createExperimentAttributeUpdater(
+				normalizedAttributes,
+				setAttributes
+			),
+		[ normalizedAttributes, setAttributes ]
+	);
+	const updateNestedAttribute = useMemo(
+		() =>
+			createExperimentNestedAttributeUpdater(
+				normalizedAttributes,
+				setAttributes
+			),
+		[ normalizedAttributes, setAttributes ]
+	);
 
 	useEffect( () => {
 		const nextAttributes: Partial< AbTestExperimentAttributes > = {};
@@ -257,23 +278,19 @@ export default function Edit( {
 	) {
 		const parsed = Number.parseInt( value, 10 );
 
-		setAttributes( {
-			[ key ]: Number.isNaN( parsed )
-				? normalizedAttributes[ key ]
-				: parsed,
-		} as Partial< AbTestExperimentAttributes > );
+		updateAttribute(
+			key,
+			Number.isNaN( parsed ) ? normalizedAttributes[ key ] : parsed
+		);
 	}
 
 	function updateWeight( variantKey: VariantKey, value: string ) {
 		const parsed = Number.parseInt( value, 10 );
-		const nextWeights = {
-			...normalizedAttributes.weights,
-			[ variantKey ]: Number.isNaN( parsed ) ? 0 : parsed,
-		};
 
-		setAttributes( {
-			weights: nextWeights,
-		} );
+		updateNestedAttribute(
+			`weights.${ variantKey }`,
+			Number.isNaN( parsed ) ? 0 : parsed
+		);
 	}
 
 	function setVariantCount( nextCount: VariantCount ) {
@@ -305,37 +322,11 @@ export default function Edit( {
 		}
 	}
 
-	const validationErrors = useMemo( () => {
-		const errors: string[] = [];
-		if ( totalWeight !== 100 ) {
-			errors.push(
-				sprintf(
-					/* translators: %d: invalid weight total */
-					__(
-						'Current traffic allocation totals %d. It should total 100.',
-						'ab-test-block'
-					),
-					totalWeight
-				)
-			);
-		}
-		if (
-			normalizedAttributes.winnerMode === 'manual' &&
-			! normalizedAttributes.manualWinner
-		) {
-			errors.push(
-				__(
-					'Choose a manual winner when manual mode is enabled.',
-					'ab-test-block'
-				)
-			);
-		}
-		return errors;
-	}, [
-		normalizedAttributes.manualWinner,
-		normalizedAttributes.winnerMode,
-		totalWeight,
-	] );
+	const validationState = useMemo(
+		() => getExperimentValidationState( normalizedAttributes ),
+		[ normalizedAttributes ]
+	);
+	const validationErrors = validationState.errorMessages;
 
 	return (
 		<>
@@ -426,7 +417,7 @@ export default function Edit( {
 						label={ __( 'Sticky assignment', 'ab-test-block' ) }
 						checked={ normalizedAttributes.stickyAssignment }
 						onChange={ ( value ) =>
-							setAttributes( { stickyAssignment: value } )
+							updateAttribute( 'stickyAssignment', value )
 						}
 					/>
 				</PanelBody>
@@ -454,12 +445,13 @@ export default function Edit( {
 						<Button
 							variant="secondary"
 							onClick={ () =>
-								setAttributes( {
-									weights: normalizeWeights(
+								updateAttribute(
+									'weights',
+									normalizeWeights(
 										normalizedAttributes.weights,
 										normalizedAttributes.variantCount
-									),
-								} )
+									)
+								)
 							}
 						>
 							{ __( 'Normalize weights', 'ab-test-block' ) }
@@ -467,11 +459,12 @@ export default function Edit( {
 						<Button
 							variant="secondary"
 							onClick={ () =>
-								setAttributes( {
-									weights: equalizeWeights(
+								updateAttribute(
+									'weights',
+									equalizeWeights(
 										normalizedAttributes.variantCount
-									),
-								} )
+									)
+								)
 							}
 						>
 							{ __( 'Equalize weights', 'ab-test-block' ) }
@@ -609,7 +602,7 @@ export default function Edit( {
 							normalizedAttributes.lockWinnerAfterSelection
 						}
 						onChange={ ( value ) =>
-							setAttributes( { lockWinnerAfterSelection: value } )
+							updateAttribute( 'lockWinnerAfterSelection', value )
 						}
 					/>
 				</PanelBody>
@@ -630,14 +623,14 @@ export default function Edit( {
 						label={ __( 'Track impressions', 'ab-test-block' ) }
 						checked={ normalizedAttributes.trackImpressions }
 						onChange={ ( value ) =>
-							setAttributes( { trackImpressions: value } )
+							updateAttribute( 'trackImpressions', value )
 						}
 					/>
 					<ToggleControl
 						label={ __( 'Track clicks', 'ab-test-block' ) }
 						checked={ normalizedAttributes.trackClicks }
 						onChange={ ( value ) =>
-							setAttributes( { trackClicks: value } )
+							updateAttribute( 'trackClicks', value )
 						}
 					/>
 					<ToggleControl
@@ -647,7 +640,7 @@ export default function Edit( {
 						) }
 						checked={ normalizedAttributes.emitBrowserEvents }
 						onChange={ ( value ) =>
-							setAttributes( { emitBrowserEvents: value } )
+							updateAttribute( 'emitBrowserEvents', value )
 						}
 					/>
 					<ToggleControl
@@ -657,7 +650,7 @@ export default function Edit( {
 						) }
 						checked={ normalizedAttributes.emitKexpLayer }
 						onChange={ ( value ) =>
-							setAttributes( { emitKexpLayer: value } )
+							updateAttribute( 'emitKexpLayer', value )
 						}
 					/>
 					<ToggleControl
@@ -667,14 +660,14 @@ export default function Edit( {
 						) }
 						checked={ normalizedAttributes.emitDataLayer }
 						onChange={ ( value ) =>
-							setAttributes( { emitDataLayer: value } )
+							updateAttribute( 'emitDataLayer', value )
 						}
 					/>
 					<ToggleControl
 						label={ __( 'Emit Clarity hook', 'ab-test-block' ) }
 						checked={ normalizedAttributes.emitClarityHook }
 						onChange={ ( value ) =>
-							setAttributes( { emitClarityHook: value } )
+							updateAttribute( 'emitClarityHook', value )
 						}
 					/>
 				</PanelBody>
