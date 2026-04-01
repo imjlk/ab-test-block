@@ -6,8 +6,17 @@
 	"title": "Ab Test Block",
 	"category": "widgets",
 	"icon": "database",
-	"description": "A persistence-aware WordPress block with Typia validation, typed REST contracts, and selectable public or authenticated write policies",
-	"example": {},
+	"description": "A/B test block starter built on the wp-typia persistence scaffold with spec-aligned experiment contracts",
+	"example": {
+		"attributes": {
+			"content": "Ab Test Block persistence block",
+			"alignment": "left",
+			"isVisible": true,
+			"showCount": true,
+			"buttonLabel": "Persist Count",
+			"resourceKey": "primary"
+		}
+	},
 	"supports": {
 		"html": false,
 		"align": true,
@@ -18,14 +27,17 @@
 	"attributes": {
 		"content": {
 			"type": "string",
-			"source": "html",
-			"selector": ".wp-block-ab-test-block__content",
 			"default": "Ab Test Block persistence block"
 		},
 		"alignment": {
 			"type": "string",
-			"enum": ["left", "center", "right"],
-			"default": "left"
+			"default": "left",
+			"enum": [
+				"left",
+				"center",
+				"right",
+				"justify"
+			]
 		},
 		"isVisible": {
 			"type": "boolean",
@@ -41,10 +53,10 @@
 		},
 		"resourceKey": {
 			"type": "string",
-			"default": ""
+			"default": "primary"
 		}
 	},
-	"textdomain": "ab_test_block",
+	"textdomain": "ab-test-block",
 	"editorScript": "file:./index.js",
 	"editorStyle": "file:./index.css",
 	"style": "file:./style-index.css",

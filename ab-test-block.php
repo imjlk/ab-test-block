@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name:       Ab Test Block
- * Description:       A persistence-aware WordPress block with Typia validation, typed REST contracts, and selectable public or authenticated write policies
+ * Description:       A/B test block starter built on the wp-typia persistence scaffold with spec-aligned experiment contracts
  * Version:           0.1.0
  * Requires at least: 6.7
  * Requires PHP:      7.4
  * Author:            imjlk
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       ab_test_block
+ * Text Domain:       ab-test-block
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

@@ -1,0 +1,209 @@
+{
+	"attributes": {
+		"content": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 250,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 1,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "Ab Test Block persistence block",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": true,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "Ab Test Block persistence block",
+				"enum": null,
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"alignment": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "left",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "left",
+				"enum": [
+					"left",
+					"center",
+					"right",
+					"justify"
+				],
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"isVisible": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"showCount": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": null,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": null,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": true,
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "boolean",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": true,
+				"enum": null,
+				"hasDefault": true,
+				"type": "boolean"
+			}
+		},
+		"buttonLabel": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 40,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 1,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "Persist Count",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "Persist Count",
+				"enum": null,
+				"hasDefault": true,
+				"type": "string"
+			}
+		},
+		"resourceKey": {
+			"typia": {
+				"constraints": {
+					"exclusiveMaximum": null,
+					"exclusiveMinimum": null,
+					"format": null,
+					"maxLength": 100,
+					"maxItems": null,
+					"maximum": null,
+					"minLength": 1,
+					"minItems": null,
+					"minimum": null,
+					"multipleOf": null,
+					"pattern": null,
+					"typeTag": null
+				},
+				"defaultValue": "primary",
+				"hasDefault": true
+			},
+			"ts": {
+				"items": null,
+				"kind": "string",
+				"properties": null,
+				"required": false,
+				"union": null
+			},
+			"wp": {
+				"defaultValue": "primary",
+				"enum": null,
+				"hasDefault": true,
+				"type": "string"
+			}
+		}
+	},
+	"manifestVersion": 2,
+	"sourceType": "AbTestBlockAttributes"
+}

@@ -37,8 +37,8 @@ $storage_mode       = 'custom-table';
 $persistence_policy = 'public';
 $can_write          = false;
 $notice_message     = 'authenticated' === $persistence_policy
-	? __( 'Sign in to persist this counter.', 'ab_test_block' )
-	: __( 'Reload the page to refresh this write token.', 'ab_test_block' );
+	? __( 'Sign in to persist this counter.', 'ab-test-block' )
+	: __( 'Reload the page to refresh this write token.', 'ab-test-block' );
 $context            = array(
 	'buttonLabel'       => $button_label,
 	'canWrite'          => false,
