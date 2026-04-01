@@ -17,19 +17,23 @@ import {
 	ToolbarGroup,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import {
 	equalizeWeights,
 	getVariantKeys,
+	getVariantLabel,
 	normalizeWeights,
+	sanitizeWinnerSnapshot,
 	sumWeights,
 } from '../../lib/experiment';
 import type {
 	AbTestExperimentAttributes,
+	AbTestWinnerEvaluationSnapshot,
 	VariantCount,
 	VariantKey,
+	WinnerLifecycleState,
 	WinnerMode,
 } from '../../types';
 import {
@@ -41,13 +45,35 @@ import {
 
 type BlockRecord = {
 	clientId: string;
-	attributes: Record< string, unknown >;
+	attributes: Record< string, unknown > & {
+		lock?: {
+			move?: boolean;
+			remove?: boolean;
+		};
+		variantKey?: VariantKey;
+		variantLabel?: string;
+	};
 	innerBlocks?: BlockRecord[];
 };
 
 type PreviewMode = 'traffic' | 'winner';
 
+type WinnerPreviewState = {
+	source:
+		| 'automatic-candidate'
+		| 'automatic-winner-locked'
+		| 'manual-winner'
+		| 'no-winner'
+		| 'off';
+	status: WinnerLifecycleState | 'manual' | 'off';
+	variant?: VariantKey;
+};
+
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
+const VARIANT_LOCK = {
+	move: true,
+	remove: true,
+} as const;
 
 function haveSameWeights(
 	left: Partial< AbTestExperimentAttributes[ 'weights' ] > | undefined,
@@ -60,13 +86,18 @@ function haveSameWeights(
 	);
 }
 
+function isVariantKeyValue( value: unknown ): value is VariantKey {
+	return value === 'a' || value === 'b' || value === 'c';
+}
+
 function createVariantBlock( variantKey: VariantKey ) {
 	return createBlock(
 		'abtest-block/variant',
 		{
+			lock: VARIANT_LOCK,
 			variantKey,
-			variantLabel: `Variant ${ variantKey.toUpperCase() }`,
-		},
+			variantLabel: getVariantLabel( variantKey ),
+		} as Record< string, unknown >,
 		[
 			createBlock( 'core/paragraph', {
 				placeholder: sprintf(
@@ -90,27 +121,72 @@ export default function Edit( {
 } ) {
 	const [ previewMode, setPreviewMode ] =
 		useState< PreviewMode >( 'traffic' );
+	const [ lastTrafficVariantKey, setLastTrafficVariantKey ] =
+		useState< VariantKey >( 'a' );
 	const [ showAssignmentLabel, setShowAssignmentLabel ] = useState( true );
 	const [ showWinnerState, setShowWinnerState ] = useState( true );
 	const [ enableQueryPreviewHints, setEnableQueryPreviewHints ] =
 		useState( true );
+	const pendingFocusVariantKeyRef = useRef< VariantKey | undefined >();
 	const normalizedAttributes = useMemo(
 		() => sanitizeParentAttributes( attributes ),
 		[ attributes ]
 	);
-	const innerBlocks = useSelect(
-		( select: any ) =>
-			( select( blockEditorStore ).getBlocks(
-				clientId
-			) as BlockRecord[] ) || [],
-		[ clientId ]
-	);
-	const selectedBlockClientId = useSelect(
-		( select: any ) =>
-			select( blockEditorStore ).getSelectedBlockClientId() as
-				| string
-				| undefined,
-		[]
+	const {
+		innerBlocks,
+		isParentSelected,
+		selectedBlockClientId,
+		selectedVariantKey,
+		storedWinnerEvaluation,
+	} = useSelect(
+		( select: any ) => {
+			const editor = select( blockEditorStore );
+			const blocks =
+				( editor.getBlocks( clientId ) as BlockRecord[] ) || [];
+			const postEditor = select( 'core/editor' );
+			const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
+				{} ) as Record< string, unknown >;
+			const winnerStateMap = meta._ab_test_block_winner_state as
+				| Record< string, unknown >
+				| undefined;
+			const nextSelectedBlockClientId =
+				editor.getSelectedBlockClientId() as string | undefined;
+			let nextSelectedVariantKey: VariantKey | undefined;
+
+			for ( const block of blocks ) {
+				const variantKey = block.attributes.variantKey;
+
+				if ( ! isVariantKeyValue( variantKey ) ) {
+					continue;
+				}
+
+				if (
+					block.clientId === nextSelectedBlockClientId ||
+					editor.hasSelectedInnerBlock( block.clientId, true )
+				) {
+					nextSelectedVariantKey = variantKey;
+					break;
+				}
+			}
+
+			return {
+				innerBlocks: blocks,
+				isParentSelected: editor.isBlockSelected( clientId ) as boolean,
+				selectedBlockClientId: nextSelectedBlockClientId,
+				selectedVariantKey: nextSelectedVariantKey,
+				storedWinnerEvaluation: sanitizeWinnerSnapshot(
+					winnerStateMap?.[ normalizedAttributes.blockInstanceId ] as
+						| Partial< AbTestWinnerEvaluationSnapshot >
+						| undefined,
+					normalizedAttributes.variantCount
+				),
+			};
+		},
+		[
+			clientId,
+			normalizedAttributes.blockInstanceId,
+			normalizedAttributes.variantCount,
+		]
 	);
 	const { replaceInnerBlocks, selectBlock, updateBlockAttributes } =
 		useDispatch( blockEditorStore as never ) as {
@@ -122,17 +198,18 @@ export default function Edit( {
 			selectBlock: ( targetClientId?: string ) => void;
 			updateBlockAttributes: (
 				targetClientId: string,
-				attributes: Partial< AbTestExperimentAttributes >
+				attributes: Record< string, unknown >
 			) => void;
 		};
 	const variantKeys = getVariantKeys( normalizedAttributes.variantCount );
 	const innerBlockByVariant = useMemo(
 		() =>
 			new Map(
-				innerBlocks.map( ( block ) => [
-					block.attributes.variantKey as VariantKey,
-					block,
-				] )
+				innerBlocks
+					.filter( ( block ) =>
+						isVariantKeyValue( block.attributes.variantKey )
+					)
+					.map( ( block ) => [ block.attributes.variantKey, block ] )
 			),
 		[ innerBlocks ]
 	);
@@ -140,21 +217,37 @@ export default function Edit( {
 		normalizedAttributes.weights,
 		normalizedAttributes.variantCount
 	);
+	const winnerPreviewState = useMemo(
+		() =>
+			getWinnerPreviewState(
+				normalizedAttributes,
+				storedWinnerEvaluation
+			),
+		[ normalizedAttributes, storedWinnerEvaluation ]
+	);
+	const activeTrafficVariantKey =
+		selectedVariantKey && variantKeys.includes( selectedVariantKey )
+			? selectedVariantKey
+			: undefined;
+	const activePreviewVariantKey =
+		previewMode === 'winner'
+			? winnerPreviewState.variant ?? lastTrafficVariantKey
+			: activeTrafficVariantKey ?? lastTrafficVariantKey;
 	const previewSummary = getPreviewSummary(
 		normalizedAttributes,
-		previewMode
+		previewMode,
+		activePreviewVariantKey,
+		winnerPreviewState
 	);
-	const winnerStateText = getWinnerStateText( normalizedAttributes );
-	const assignmentPreviewText =
-		previewMode === 'traffic'
-			? __(
-					'Traffic preview shows the configured delivery strategy.',
-					'ab-test-block'
-			  )
-			: __(
-					'Winner preview shows which variant would be forced by winner rules.',
-					'ab-test-block'
-			  );
+	const winnerStateText = getWinnerStateText(
+		normalizedAttributes,
+		winnerPreviewState
+	);
+	const assignmentPreviewText = getAssignmentPreviewText(
+		previewMode,
+		activePreviewVariantKey,
+		winnerPreviewState
+	);
 	const stickyLabel = normalizedAttributes.stickyAssignment
 		? __( 'Sticky', 'ab-test-block' )
 		: __( 'Non-sticky', 'ab-test-block' );
@@ -224,6 +317,7 @@ export default function Edit( {
 		attributes.manualWinner,
 		attributes.previewQueryKey,
 		attributes.weights,
+		clientId,
 		normalizedAttributes.blockInstanceId,
 		normalizedAttributes.experimentId,
 		normalizedAttributes.manualWinner,
@@ -231,7 +325,6 @@ export default function Edit( {
 		normalizedAttributes.variantCount,
 		normalizedAttributes.weights,
 		updateBlockAttributes,
-		clientId,
 	] );
 
 	useEffect( () => {
@@ -250,11 +343,47 @@ export default function Edit( {
 					innerBlocks[ index ]?.clientId !== block.clientId
 			);
 
-		if ( ! needsSync ) {
-			return;
+		if ( needsSync ) {
+			replaceInnerBlocks( clientId, desiredBlocks, false );
 		}
 
-		replaceInnerBlocks( clientId, desiredBlocks, false );
+		desiredBlocks.forEach( ( block ) => {
+			const variantKey = block.attributes.variantKey;
+
+			if ( ! isVariantKeyValue( variantKey ) ) {
+				return;
+			}
+
+			const lock = block.attributes.lock;
+			const nextVariantLabel = getVariantLabel( variantKey );
+			const nextBlockAttributes: Record< string, unknown > = {};
+
+			if ( block.attributes.variantLabel !== nextVariantLabel ) {
+				nextBlockAttributes.variantLabel = nextVariantLabel;
+			}
+
+			if ( lock?.move !== true || lock?.remove !== true ) {
+				nextBlockAttributes.lock = VARIANT_LOCK;
+			}
+
+			if ( Object.keys( nextBlockAttributes ).length > 0 ) {
+				updateBlockAttributes( block.clientId, nextBlockAttributes );
+			}
+		} );
+
+		const pendingFocusVariantKey = pendingFocusVariantKeyRef.current;
+		if ( pendingFocusVariantKey ) {
+			const focusTarget = desiredBlocks.find(
+				( block ) =>
+					block.attributes.variantKey === pendingFocusVariantKey
+			);
+
+			if ( focusTarget?.clientId ) {
+				selectBlock( focusTarget.clientId );
+				pendingFocusVariantKeyRef.current = undefined;
+				return;
+			}
+		}
 
 		if ( ! selectedBlockClientId && desiredBlocks[ 0 ]?.clientId ) {
 			selectBlock( desiredBlocks[ 0 ].clientId );
@@ -266,7 +395,53 @@ export default function Edit( {
 		replaceInnerBlocks,
 		selectBlock,
 		selectedBlockClientId,
+		updateBlockAttributes,
 		variantKeys,
+	] );
+
+	useEffect( () => {
+		if (
+			previewMode === 'traffic' &&
+			activeTrafficVariantKey &&
+			activeTrafficVariantKey !== lastTrafficVariantKey
+		) {
+			setLastTrafficVariantKey( activeTrafficVariantKey );
+		}
+	}, [ activeTrafficVariantKey, lastTrafficVariantKey, previewMode ] );
+
+	useEffect( () => {
+		if ( variantKeys.includes( lastTrafficVariantKey ) ) {
+			return;
+		}
+
+		setLastTrafficVariantKey( variantKeys[ 0 ] );
+	}, [ lastTrafficVariantKey, variantKeys ] );
+
+	useEffect( () => {
+		let targetVariantKey: VariantKey | undefined;
+
+		if ( previewMode === 'winner' ) {
+			targetVariantKey = winnerPreviewState.variant;
+		} else if ( isParentSelected || ! activeTrafficVariantKey ) {
+			targetVariantKey = activePreviewVariantKey;
+		}
+
+		if ( ! targetVariantKey ) {
+			return;
+		}
+
+		const targetBlock = innerBlockByVariant.get( targetVariantKey );
+		if ( targetBlock?.clientId ) {
+			selectBlock( targetBlock.clientId );
+		}
+	}, [
+		activePreviewVariantKey,
+		activeTrafficVariantKey,
+		innerBlockByVariant,
+		isParentSelected,
+		previewMode,
+		selectBlock,
+		winnerPreviewState.variant,
 	] );
 
 	function updateNumberAttribute(
@@ -293,11 +468,43 @@ export default function Edit( {
 		);
 	}
 
-	function setVariantCount( nextCount: VariantCount ) {
+	function focusVariant( variantKey: VariantKey ) {
+		const targetBlock = innerBlockByVariant.get( variantKey );
+
+		if ( targetBlock?.clientId ) {
+			selectBlock( targetBlock.clientId );
+			pendingFocusVariantKeyRef.current = undefined;
+			return;
+		}
+
+		pendingFocusVariantKeyRef.current = variantKey;
+	}
+
+	function activateVariantEditor( variantKey: VariantKey ) {
+		setPreviewMode( 'traffic' );
+		setLastTrafficVariantKey( variantKey );
+		focusVariant( variantKey );
+	}
+
+	function setVariantCount(
+		nextCount: VariantCount,
+		preferredTrafficVariantKey?: VariantKey
+	) {
 		const nextWeights =
 			nextCount === 3
 				? equalizeWeights( nextCount )
 				: normalizeWeights( normalizedAttributes.weights, nextCount );
+		const nextVariantKeys = getVariantKeys( nextCount );
+		let nextTrafficVariantKey = nextVariantKeys[ 0 ];
+
+		if (
+			preferredTrafficVariantKey &&
+			nextVariantKeys.includes( preferredTrafficVariantKey )
+		) {
+			nextTrafficVariantKey = preferredTrafficVariantKey;
+		} else if ( nextVariantKeys.includes( lastTrafficVariantKey ) ) {
+			nextTrafficVariantKey = lastTrafficVariantKey;
+		}
 		const nextAttributes: Partial< AbTestExperimentAttributes > = {
 			variantCount: nextCount,
 			weights: nextWeights,
@@ -305,20 +512,26 @@ export default function Edit( {
 
 		if (
 			normalizedAttributes.manualWinner &&
-			! getVariantKeys( nextCount ).includes(
-				normalizedAttributes.manualWinner
-			)
+			! nextVariantKeys.includes( normalizedAttributes.manualWinner )
 		) {
-			nextAttributes.manualWinner = getVariantKeys( nextCount )[ 0 ];
+			nextAttributes.manualWinner = nextVariantKeys[ 0 ];
 		}
 
+		pendingFocusVariantKeyRef.current = nextTrafficVariantKey;
+		setPreviewMode( 'traffic' );
+		setLastTrafficVariantKey( nextTrafficVariantKey );
 		setAttributes( nextAttributes );
 	}
 
-	function selectVariant( variantKey: VariantKey ) {
-		const targetBlock = innerBlockByVariant.get( variantKey );
-		if ( targetBlock?.clientId ) {
-			selectBlock( targetBlock.clientId );
+	function previewTrafficMode() {
+		setPreviewMode( 'traffic' );
+		focusVariant( lastTrafficVariantKey );
+	}
+
+	function previewWinnerMode() {
+		setPreviewMode( 'winner' );
+		if ( winnerPreviewState.variant ) {
+			focusVariant( winnerPreviewState.variant );
 		}
 	}
 
@@ -340,18 +553,20 @@ export default function Edit( {
 								__( 'Edit %s', 'ab-test-block' ),
 								variantKey.toUpperCase()
 							) }
-							onClick={ () => selectVariant( variantKey ) }
+							onClick={ () =>
+								activateVariantEditor( variantKey )
+							}
 						/>
 					) ) }
 					{ normalizedAttributes.variantCount === 2 ? (
 						<ToolbarButton
 							label={ __( 'Add C', 'ab-test-block' ) }
-							onClick={ () => setVariantCount( 3 ) }
+							onClick={ () => setVariantCount( 3, 'c' ) }
 						/>
 					) : (
 						<ToolbarButton
 							label={ __( 'Remove C', 'ab-test-block' ) }
-							onClick={ () => setVariantCount( 2 ) }
+							onClick={ () => setVariantCount( 2, 'b' ) }
 						/>
 					) }
 				</ToolbarGroup>
@@ -359,12 +574,12 @@ export default function Edit( {
 					<ToolbarButton
 						isPressed={ previewMode === 'winner' }
 						label={ __( 'Preview Winner', 'ab-test-block' ) }
-						onClick={ () => setPreviewMode( 'winner' ) }
+						onClick={ previewWinnerMode }
 					/>
 					<ToolbarButton
 						isPressed={ previewMode === 'traffic' }
 						label={ __( 'Preview Traffic Mode', 'ab-test-block' ) }
-						onClick={ () => setPreviewMode( 'traffic' ) }
+						onClick={ previewTrafficMode }
 					/>
 				</ToolbarGroup>
 			</BlockControls>
@@ -377,7 +592,7 @@ export default function Edit( {
 						label={ __( 'Experiment ID', 'ab-test-block' ) }
 						value={ normalizedAttributes.experimentId }
 						onChange={ ( value ) =>
-							setAttributes( { experimentId: value } )
+							updateAttribute( 'experimentId', value )
 						}
 						help={ __(
 							'Used for query preview and analytics payloads.',
@@ -406,7 +621,7 @@ export default function Edit( {
 						label={ __( 'Preview query key', 'ab-test-block' ) }
 						value={ normalizedAttributes.previewQueryKey }
 						onChange={ ( value ) =>
-							setAttributes( { previewQueryKey: value } )
+							updateAttribute( 'previewQueryKey', value )
 						}
 						help={ __(
 							'Supports both a block-specific key and ?abtest=experimentId:variant.',
@@ -723,9 +938,76 @@ export default function Edit( {
 						<span>{ stickyLabel }</span>
 					</div>
 				</div>
+				<div className="wp-block-abtest-block-test__tabs">
+					{ variantKeys.map( ( variantKey ) => (
+						<Button
+							key={ variantKey }
+							className="wp-block-abtest-block-test__tab"
+							variant={
+								activePreviewVariantKey === variantKey
+									? 'primary'
+									: 'secondary'
+							}
+							onClick={ () =>
+								activateVariantEditor( variantKey )
+							}
+						>
+							{ sprintf(
+								/* translators: %s: variant key */
+								__( 'Variant %s', 'ab-test-block' ),
+								variantKey.toUpperCase()
+							) }
+						</Button>
+					) ) }
+					{ normalizedAttributes.variantCount === 2 ? (
+						<Button
+							className="wp-block-abtest-block-test__tab-action"
+							variant="secondary"
+							onClick={ () => setVariantCount( 3, 'c' ) }
+						>
+							{ __( 'Add C', 'ab-test-block' ) }
+						</Button>
+					) : (
+						<Button
+							className="wp-block-abtest-block-test__tab-action"
+							variant="secondary"
+							onClick={ () => setVariantCount( 2, 'b' ) }
+						>
+							{ __( 'Remove C', 'ab-test-block' ) }
+						</Button>
+					) }
+				</div>
+				<div className="wp-block-abtest-block-test__preview-controls">
+					<Button
+						className="wp-block-abtest-block-test__preview-button"
+						variant={
+							previewMode === 'traffic' ? 'primary' : 'secondary'
+						}
+						onClick={ previewTrafficMode }
+					>
+						{ __( 'Preview Traffic Mode', 'ab-test-block' ) }
+					</Button>
+					<Button
+						className="wp-block-abtest-block-test__preview-button"
+						variant={
+							previewMode === 'winner' ? 'primary' : 'secondary'
+						}
+						onClick={ previewWinnerMode }
+					>
+						{ __( 'Preview Winner', 'ab-test-block' ) }
+					</Button>
+				</div>
 				<Notice status="info" isDismissible={ false }>
 					{ previewSummary }
 				</Notice>
+				{ previewMode === 'winner' && ! winnerPreviewState.variant && (
+					<Notice status="warning" isDismissible={ false }>
+						{ __(
+							'Winner preview does not yet have a resolved variant to show in the editor.',
+							'ab-test-block'
+						) }
+					</Notice>
+				) }
 				{ showWinnerState && (
 					<p className="wp-block-abtest-block-test__debug">
 						{ winnerStateText }
@@ -758,10 +1040,10 @@ export default function Edit( {
 						{ error }
 					</Notice>
 				) ) }
-				<div className="wp-block-abtest-block-test__variants">
+				<div className="wp-block-abtest-block-test__stage">
 					<InnerBlocks
 						allowedBlocks={ ALLOWED_BLOCKS }
-						templateLock="all"
+						renderAppender={ undefined }
 					/>
 				</div>
 			</div>
@@ -781,57 +1063,193 @@ function formatWeightSummary(
 		.join( ' / ' );
 }
 
+function getWinnerPreviewState(
+	attributes: AbTestExperimentAttributes,
+	storedWinnerEvaluation: AbTestWinnerEvaluationSnapshot
+): WinnerPreviewState {
+	if ( attributes.winnerMode === 'manual' && attributes.manualWinner ) {
+		return {
+			source: 'manual-winner',
+			status: 'manual',
+			variant: attributes.manualWinner,
+		};
+	}
+
+	if ( attributes.winnerMode === 'automatic' ) {
+		if (
+			storedWinnerEvaluation.status === 'winner-locked' &&
+			storedWinnerEvaluation.winner
+		) {
+			return {
+				source: 'automatic-winner-locked',
+				status: storedWinnerEvaluation.status,
+				variant: storedWinnerEvaluation.winner,
+			};
+		}
+
+		if (
+			storedWinnerEvaluation.status === 'candidate' &&
+			storedWinnerEvaluation.winner
+		) {
+			return {
+				source: 'automatic-candidate',
+				status: storedWinnerEvaluation.status,
+				variant: storedWinnerEvaluation.winner,
+			};
+		}
+
+		return {
+			source: 'no-winner',
+			status: 'no-winner',
+		};
+	}
+
+	if ( attributes.winnerMode === 'off' ) {
+		return {
+			source: 'off',
+			status: 'off',
+		};
+	}
+
+	return {
+		source: 'no-winner',
+		status: 'no-winner',
+	};
+}
+
 function getPreviewSummary(
 	attributes: AbTestExperimentAttributes,
-	previewMode: PreviewMode
+	previewMode: PreviewMode,
+	activeVariantKey: VariantKey,
+	winnerPreviewState: WinnerPreviewState
 ) {
 	if ( previewMode !== 'winner' ) {
 		return sprintf(
-			/* translators: %s: weight summary */
+			/* translators: 1: active variant key, 2: weight summary */
 			__(
-				'Traffic preview uses weighted allocation: %s.',
+				'Traffic mode is editing Variant %1$s. Configured delivery: %2$s.',
 				'ab-test-block'
 			),
+			activeVariantKey.toUpperCase(),
 			formatWeightSummary( attributes.weights, attributes.variantCount )
 		);
 	}
 
-	if ( attributes.winnerMode === 'manual' && attributes.manualWinner ) {
+	if ( winnerPreviewState.variant ) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner preview would show Variant %s.', 'ab-test-block' ),
-			attributes.manualWinner.toUpperCase()
+			__(
+				'Winner preview is forcing Variant %s in the editor.',
+				'ab-test-block'
+			),
+			winnerPreviewState.variant.toUpperCase()
 		);
 	}
 
-	if ( attributes.winnerMode === 'automatic' ) {
+	if (
+		winnerPreviewState.source === 'automatic-candidate' ||
+		winnerPreviewState.source === 'automatic-winner-locked'
+	) {
 		return __(
-			'Winner preview follows the latest automatic winner state.',
+			'Winner preview is enabled, but automatic winner resolution is only available after front-end stats are evaluated.',
 			'ab-test-block'
 		);
 	}
 
 	return __(
-		'Winner preview is off until a manual or automatic winner exists.',
+		'Winner preview is enabled, but no manual or automatic winner is currently available in the editor.',
 		'ab-test-block'
 	);
 }
 
-function getWinnerStateText( attributes: AbTestExperimentAttributes ) {
-	if ( attributes.winnerMode === 'manual' && attributes.manualWinner ) {
+function getAssignmentPreviewText(
+	previewMode: PreviewMode,
+	activeVariantKey: VariantKey,
+	winnerPreviewState: WinnerPreviewState
+) {
+	if ( previewMode === 'winner' && winnerPreviewState.variant ) {
+		let previewSource: string = __(
+			'automatic candidate',
+			'ab-test-block'
+		);
+
+		if ( winnerPreviewState.source === 'manual-winner' ) {
+			previewSource = __( 'manual winner', 'ab-test-block' );
+		} else if ( winnerPreviewState.source === 'automatic-winner-locked' ) {
+			previewSource = __( 'locked automatic winner', 'ab-test-block' );
+		}
+
 		return sprintf(
-			/* translators: %s: variant key */
-			__( 'Configured manual winner: Variant %s', 'ab-test-block' ),
-			attributes.manualWinner.toUpperCase()
+			/* translators: 1: variant key, 2: preview source */
+			__(
+				'Current editor preview: Variant %1$s via %2$s.',
+				'ab-test-block'
+			),
+			winnerPreviewState.variant.toUpperCase(),
+			previewSource
 		);
 	}
 
-	if ( attributes.winnerMode === 'automatic' ) {
+	if ( previewMode === 'winner' ) {
 		return __(
-			'Automatic winner will be resolved from front-end stats.',
+			'Current editor preview: winner preview is active, but no resolved winner is available.',
 			'ab-test-block'
 		);
 	}
 
-	return __( 'No winner is currently configured.', 'ab-test-block' );
+	return sprintf(
+		/* translators: %s: variant key */
+		__(
+			'Current editor preview: editing Variant %s in traffic mode.',
+			'ab-test-block'
+		),
+		activeVariantKey.toUpperCase()
+	);
+}
+
+function getWinnerStateText(
+	attributes: AbTestExperimentAttributes,
+	winnerPreviewState: WinnerPreviewState
+) {
+	if (
+		winnerPreviewState.status === 'manual' &&
+		winnerPreviewState.variant
+	) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Winner state: manual -> Variant %s', 'ab-test-block' ),
+			winnerPreviewState.variant.toUpperCase()
+		);
+	}
+
+	if (
+		winnerPreviewState.status === 'winner-locked' &&
+		winnerPreviewState.variant
+	) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Winner state: winner-locked -> Variant %s', 'ab-test-block' ),
+			winnerPreviewState.variant.toUpperCase()
+		);
+	}
+
+	if (
+		winnerPreviewState.status === 'candidate' &&
+		winnerPreviewState.variant
+	) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Winner state: candidate -> Variant %s', 'ab-test-block' ),
+			winnerPreviewState.variant.toUpperCase()
+		);
+	}
+
+	if (
+		winnerPreviewState.status === 'off' ||
+		attributes.winnerMode === 'off'
+	) {
+		return __( 'Winner state: off', 'ab-test-block' );
+	}
+
+	return __( 'Winner state: no resolved winner yet', 'ab-test-block' );
 }

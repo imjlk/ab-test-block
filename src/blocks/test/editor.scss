@@ -48,8 +48,47 @@
 		font-size: 13px;
 	}
 
-	&__variants {
+	&__tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 0 0 16px;
+	}
+
+	&__tab {
+
+		&.components-button {
+			border-radius: 999px;
+		}
+	}
+
+	&__tab-action {
+
+		&.components-button {
+			border-radius: 999px;
+		}
+	}
+
+	&__preview-controls {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-bottom: 12px;
+	}
+
+	&__preview-button {
+
+		&.components-button {
+			border-radius: 999px;
+		}
+	}
+
+	&__stage {
 		margin-top: 18px;
+		padding: 18px;
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.78);
+		border: 1px solid rgba(112, 82, 18, 0.18);
 	}
 
 	&__panel-actions {

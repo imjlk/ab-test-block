@@ -154,6 +154,15 @@ jobs:
               run: |
                   set -euo pipefail
 
+                  if ! ./node_modules/.bin/wp-env run cli wp core is-installed; then
+                    ./node_modules/.bin/wp-env run cli wp core install \
+                      --url=http://localhost:8890 \
+                      --title="A/B Test Block" \
+                      --admin_user=admin \
+                      --admin_password=password \
+                      --admin_email=admin@example.com
+                  fi
+
                   ./node_modules/.bin/wp-env run cli wp plugin activate ab-test-block
                   ./node_modules/.bin/wp-env run cli wp plugin is-active ab-test-block
 

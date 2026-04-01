@@ -4,11 +4,8 @@ import {
 	useBlockEditContext,
 	useBlockProps,
 } from '@wordpress/block-editor';
-import { Button } from '@wordpress/components';
-import { useDispatch, useSelect } from '@wordpress/data';
-import { __ } from '@wordpress/i18n';
+import { useSelect } from '@wordpress/data';
 
-import { getVariantLabel } from '../../lib/experiment';
 import type { AbTestVariantAttributes } from '../../types';
 
 export default function Edit( {
@@ -27,49 +24,21 @@ export default function Edit( {
 		},
 		[ clientId ]
 	);
-	const { selectBlock } = useDispatch( blockEditorStore as never ) as {
-		selectBlock: ( targetClientId?: string ) => void;
-	};
-	const variantKey = attributes.variantKey ?? 'a';
-	const label = attributes.variantLabel || getVariantLabel( variantKey );
 
 	return (
 		<div
 			{ ...useBlockProps( {
 				className: `wp-block-abtest-block-variant ${
-					isActive ? 'is-active' : 'is-collapsed'
+					isActive ? 'is-active' : 'is-inactive'
 				}`,
-				'data-abtest-editor-variant': variantKey,
+				'data-abtest-editor-variant': attributes.variantKey ?? 'a',
 			} ) }
 		>
-			<div className="wp-block-abtest-block-variant__header">
-				<div>
-					<p className="wp-block-abtest-block-variant__eyebrow">
-						{ __( 'Variant', 'ab-test-block' ) }
-					</p>
-					<h4>{ label }</h4>
-				</div>
-				{ ! isActive && (
-					<Button
-						variant="secondary"
-						onClick={ () => selectBlock( clientId ) }
-					>
-						{ __( 'Edit', 'ab-test-block' ) }
-					</Button>
-				) }
-			</div>
 			{ isActive ? (
 				<InnerBlocks
 					renderAppender={ InnerBlocks.ButtonBlockAppender }
 				/>
-			) : (
-				<p className="wp-block-abtest-block-variant__placeholder">
-					{ __(
-						'Select this variant to edit its content.',
-						'ab-test-block'
-					) }
-				</p>
-			) }
+			) : null }
 		</div>
 	);
 }

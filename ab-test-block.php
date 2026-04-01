@@ -232,6 +232,30 @@ function ab_test_block_get_winner_state( $post_id, $block_instance_id, $variant_
 	return ab_test_block_sanitize_winner_state( $state, $variant_count, $window_days );
 }
 
+function ab_test_block_register_meta() {
+	register_meta(
+		'post',
+		AB_TEST_BLOCK_WINNER_META_KEY,
+		array(
+			'auth_callback'     => static function() {
+				return current_user_can( 'edit_posts' );
+			},
+			'sanitize_callback' => static function( $value ) {
+				return is_array( $value ) ? $value : array();
+			},
+			'show_in_rest'      => array(
+				'schema' => array(
+					'additionalProperties' => true,
+					'default'              => array(),
+					'type'                 => 'object',
+				),
+			),
+			'single'            => true,
+			'type'              => 'object',
+		)
+	);
+}
+
 function ab_test_block_update_winner_state( $post_id, $block_instance_id, $state, $variant_count, $window_days = 14 ) {
 	$state_map                         = ab_test_block_get_winner_state_map( $post_id );
 	$state_map[ $block_instance_id ]   = ab_test_block_sanitize_winner_state( $state, $variant_count, $window_days );
@@ -713,5 +737,6 @@ function ab_test_block_register_blocks() {
 
 register_activation_hook( __FILE__, 'ab_test_block_maybe_install_storage' );
 add_action( 'init', 'ab_test_block_ensure_storage_installed' );
+add_action( 'init', 'ab_test_block_register_meta' );
 add_action( 'init', 'ab_test_block_register_blocks' );
 add_action( 'rest_api_init', 'ab_test_block_register_routes' );
