@@ -90,31 +90,90 @@ function buildRunPhpCode() {
 
 	return `<?php
 if ( ! function_exists( 'wp_insert_post' ) ) {
-\trequire_once 'wordpress/wp-load.php';
+\trequire_once '/wordpress/wp-load.php';
 }
 
+\tglobal $wpdb;
+
 $post_id = 1001;
+$post_title = 'A/B Test Block Playground Demo';
+$post_excerpt = 'Seeded editor demo for the A/B Test block plugin.';
+$post_slug = 'ab-test-block-playground-demo';
+$post_date = current_time( 'mysql' );
+$post_date_gmt = current_time( 'mysql', true );
 $post_content = <<<'HTML'
 ${ demoPostContent }
 HTML;
 
 $postarr = array(
 \t'ID' => $post_id,
-\t'import_id' => $post_id,
 \t'post_author' => 1,
 \t'post_content' => $post_content,
-\t'post_excerpt' => 'Seeded editor demo for the A/B Test block plugin.',
-\t'post_name' => 'ab-test-block-playground-demo',
+\t'post_excerpt' => $post_excerpt,
+\t'post_name' => $post_slug,
 \t'post_status' => 'publish',
-\t'post_title' => 'A/B Test Block Playground Demo',
+\t'post_title' => $post_title,
 \t'post_type' => 'post',
 );
 
 if ( get_post( $post_id ) ) {
 \twp_update_post( $postarr );
 } else {
-\twp_insert_post( $postarr );
+\t$wpdb->insert(
+\t\t$wpdb->posts,
+\t\tarray(
+\t\t\t'ID' => $post_id,
+\t\t\t'post_author' => 1,
+\t\t\t'post_date' => $post_date,
+\t\t\t'post_date_gmt' => $post_date_gmt,
+\t\t\t'post_content' => $post_content,
+\t\t\t'post_title' => $post_title,
+\t\t\t'post_excerpt' => $post_excerpt,
+\t\t\t'post_status' => 'publish',
+\t\t\t'comment_status' => 'closed',
+\t\t\t'ping_status' => 'closed',
+\t\t\t'post_password' => '',
+\t\t\t'post_name' => $post_slug,
+\t\t\t'to_ping' => '',
+\t\t\t'pinged' => '',
+\t\t\t'post_modified' => $post_date,
+\t\t\t'post_modified_gmt' => $post_date_gmt,
+\t\t\t'post_content_filtered' => '',
+\t\t\t'post_parent' => 0,
+\t\t\t'guid' => home_url( '/?p=' . $post_id ),
+\t\t\t'menu_order' => 0,
+\t\t\t'post_type' => 'post',
+\t\t\t'post_mime_type' => '',
+\t\t\t'comment_count' => 0,
+\t\t),
+\t\tarray(
+\t\t\t'%d',
+\t\t\t'%d',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%d',
+\t\t\t'%s',
+\t\t\t'%d',
+\t\t\t'%s',
+\t\t\t'%s',
+\t\t\t'%d',
+\t\t)
+\t);
 }
+
+clean_post_cache( $post_id );
 `;
 }
 
