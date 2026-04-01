@@ -6,6 +6,9 @@
 	"author": "imjlk",
 	"license": "GPL-2.0-or-later",
 	"main": "build/blocks/test/index.js",
+	"engines": {
+		"node": "24.x"
+	},
 	"files": [
 		"ab-test-block.php",
 		"build",
