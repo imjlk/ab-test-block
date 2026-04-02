@@ -144,6 +144,9 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
+            - name: Build plugin
+              run: bun run build
+
             - name: Start WordPress
               run: |
                   bun run env:stop || true

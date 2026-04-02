@@ -1,5 +1,6 @@
 import { createBlock } from '@wordpress/blocks';
 import {
+	BlockControls,
 	InspectorControls,
 	InnerBlocks,
 	store as blockEditorStore,
@@ -7,10 +8,15 @@ import {
 } from '@wordpress/block-editor';
 import {
 	Button,
+	Dropdown,
+	MenuGroup,
+	MenuItem,
 	Notice,
 	PanelBody,
 	SelectControl,
 	TextControl,
+	ToolbarButton,
+	ToolbarGroup,
 	ToggleControl,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
@@ -635,15 +641,6 @@ export default function Edit( {
 		[ normalizedAttributes ]
 	);
 	const validationErrors = validationState.errorMessages;
-	const activeVariantHeading = sprintf(
-		/* translators: %s: variant key */
-		__( 'Variant %s', 'ab-test-block' ),
-		activePreviewVariantKey.toUpperCase()
-	);
-	const stageEyebrow =
-		previewMode === 'winner'
-			? __( 'Winner Preview', 'ab-test-block' )
-			: __( 'Editing Traffic Variant', 'ab-test-block' );
 	const queryPreviewHint = sprintf(
 		/* translators: 1: query key, 2: experiment id */
 		__( 'Preview hints: ?%1$s=b or ?abtest=%2$s:b', 'ab-test-block' ),
@@ -653,6 +650,10 @@ export default function Edit( {
 	const hasTrackedStats = Boolean(
 		stats?.instance.updatedAt || stats?.experiment.updatedAt
 	);
+	const latestStatsUpdatedAt = getLatestStatsUpdatedAt( stats );
+	const latestStatsUpdatedText = latestStatsUpdatedAt
+		? new Date( latestStatsUpdatedAt * 1000 ).toLocaleString()
+		: __( 'No tracked events yet', 'ab-test-block' );
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
@@ -660,6 +661,220 @@ export default function Edit( {
 
 	return (
 		<>
+			<BlockControls>
+				<ToolbarGroup>
+					{ variantKeys.map( ( variantKey ) => (
+						<ToolbarButton
+							key={ variantKey }
+							isPressed={
+								activePreviewVariantKey === variantKey &&
+								previewMode === 'traffic'
+							}
+							label={ sprintf(
+								/* translators: %s: variant key */
+								__( 'Edit Variant %s', 'ab-test-block' ),
+								variantKey.toUpperCase()
+							) }
+							onClick={ () =>
+								activateVariantEditor( variantKey )
+							}
+						>
+							{ variantKey.toUpperCase() }
+						</ToolbarButton>
+					) ) }
+				</ToolbarGroup>
+				<ToolbarGroup>
+					<ToolbarButton
+						isPressed={ previewMode === 'traffic' }
+						label={ __( 'Traffic mode', 'ab-test-block' ) }
+						onClick={ previewTrafficMode }
+					>
+						{ __( 'Traffic', 'ab-test-block' ) }
+					</ToolbarButton>
+					<ToolbarButton
+						isPressed={ previewMode === 'winner' }
+						label={ __( 'Winner preview', 'ab-test-block' ) }
+						onClick={ previewWinnerMode }
+					>
+						{ __( 'Winner', 'ab-test-block' ) }
+					</ToolbarButton>
+				</ToolbarGroup>
+				<ToolbarGroup>
+					<Dropdown
+						className="wp-block-abtest-block-test__toolbar-dropdown"
+						contentClassName="wp-block-abtest-block-test__toolbar-dropdown-content"
+						popoverProps={ { placement: 'bottom-end' } }
+						renderToggle={ ( { isOpen, onToggle } ) => (
+							<ToolbarButton
+								aria-expanded={ isOpen }
+								label={ __( 'More', 'ab-test-block' ) }
+								onClick={ onToggle }
+							>
+								{ __( 'More', 'ab-test-block' ) }
+							</ToolbarButton>
+						) }
+						renderContent={ ( { onClose } ) => (
+							<div className="wp-block-abtest-block-test__toolbar-menu">
+								<MenuGroup
+									label={ __( 'Actions', 'ab-test-block' ) }
+								>
+									{ normalizedAttributes.variantCount ===
+									2 ? (
+										<MenuItem
+											onClick={ () => {
+												setVariantCount( 3, 'c' );
+												onClose();
+											} }
+										>
+											{ __( 'Add C', 'ab-test-block' ) }
+										</MenuItem>
+									) : (
+										<MenuItem
+											onClick={ () => {
+												setVariantCount( 2, 'b' );
+												onClose();
+											} }
+										>
+											{ __(
+												'Remove C',
+												'ab-test-block'
+											) }
+										</MenuItem>
+									) }
+									<MenuItem
+										disabled={
+											isStatsLoading || postId <= 0
+										}
+										onClick={ () => {
+											refreshStats();
+											onClose();
+										} }
+									>
+										{ isStatsLoading
+											? __(
+													'Refreshing…',
+													'ab-test-block'
+											  )
+											: __(
+													'Refresh stats',
+													'ab-test-block'
+											  ) }
+									</MenuItem>
+								</MenuGroup>
+								<div className="wp-block-abtest-block-test__toolbar-info">
+									<p className="wp-block-abtest-block-test__toolbar-info-title">
+										{ __(
+											'Experiment info',
+											'ab-test-block'
+										) }
+									</p>
+									<dl className="wp-block-abtest-block-test__toolbar-info-grid">
+										<div>
+											<dt>
+												{ __(
+													'Label',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>
+												{
+													normalizedAttributes.experimentLabel
+												}
+											</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Experiment ID',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>
+												{
+													normalizedAttributes.experimentId
+												}
+											</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Weights',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>
+												{ formatWeightSummary(
+													normalizedAttributes.weights,
+													normalizedAttributes.variantCount
+												) }
+											</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Winner mode',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>
+												{
+													normalizedAttributes.winnerMode
+												}
+											</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Sticky',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>{ stickyLabel }</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Preview mode',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>
+												{ previewMode === 'winner'
+													? __(
+															'Winner preview',
+															'ab-test-block'
+													  )
+													: __(
+															'Traffic mode',
+															'ab-test-block'
+													  ) }
+											</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Assignment',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>{ assignmentSourceText }</dd>
+										</div>
+										<div>
+											<dt>
+												{ __(
+													'Updated',
+													'ab-test-block'
+												) }
+											</dt>
+											<dd>{ latestStatsUpdatedText }</dd>
+										</div>
+									</dl>
+								</div>
+							</div>
+						) }
+					/>
+				</ToolbarGroup>
+			</BlockControls>
 			<InspectorControls>
 				<PanelBody
 					title={ __( 'Editor Preview', 'ab-test-block' ) }
@@ -1154,26 +1369,6 @@ export default function Edit( {
 					className: 'wp-block-abtest-block-test',
 				} ) }
 			>
-				<div className="wp-block-abtest-block-test__header">
-					<div>
-						<p className="wp-block-abtest-block-test__eyebrow">
-							{ __( 'A/B Experiment', 'ab-test-block' ) }
-						</p>
-						<h3 className="wp-block-abtest-block-test__title">
-							{ normalizedAttributes.experimentLabel }
-						</h3>
-					</div>
-					<div className="wp-block-abtest-block-test__summary">
-						<span>
-							{ formatWeightSummary(
-								normalizedAttributes.weights,
-								normalizedAttributes.variantCount
-							) }
-						</span>
-						<span>{ normalizedAttributes.winnerMode }</span>
-						<span>{ stickyLabel }</span>
-					</div>
-				</div>
 				<div className="wp-block-abtest-block-test__workspace">
 					<div className="wp-block-abtest-block-test__tabs">
 						{ variantKeys.map( ( variantKey ) => (
@@ -1193,35 +1388,40 @@ export default function Edit( {
 							</Button>
 						) ) }
 					</div>
-					<div className="wp-block-abtest-block-test__workspace-meta">
-						<p className="wp-block-abtest-block-test__workspace-eyebrow">
-							{ stageEyebrow }
-						</p>
-						<h4 className="wp-block-abtest-block-test__workspace-title">
-							{ activeVariantHeading }
-						</h4>
-						<p className="wp-block-abtest-block-test__workspace-copy">
-							{ previewSummary }
-						</p>
-					</div>
 				</div>
-				{ previewMode === 'winner' && ! winnerPreviewState.variant && (
-					<Notice status="warning" isDismissible={ false }>
-						{ __(
-							'Winner preview does not yet have a resolved variant to show in the editor.',
-							'ab-test-block'
+				<div className="wp-block-abtest-block-test__inline-notices">
+					{ previewMode === 'winner' &&
+						! winnerPreviewState.variant && (
+							<Notice
+								className="wp-block-abtest-block-test__inline-notice"
+								status="warning"
+								isDismissible={ false }
+							>
+								{ __(
+									'Winner preview has no resolved variant yet.',
+									'ab-test-block'
+								) }
+							</Notice>
 						) }
-					</Notice>
-				) }
-				{ validationErrors.map( ( error ) => (
-					<Notice
-						key={ error }
-						status="warning"
-						isDismissible={ false }
-					>
-						{ error }
-					</Notice>
-				) ) }
+					{ validationErrors.map( ( error ) => (
+						<Notice
+							key={ error }
+							className="wp-block-abtest-block-test__inline-notice"
+							status="warning"
+							isDismissible={ false }
+						>
+							{ error }
+						</Notice>
+					) ) }
+					{ ( previewMode === 'winner' ||
+						validationErrors.length > 0 ) && (
+						<div className="wp-block-abtest-block-test__inline-summary">
+							{ previewMode === 'winner'
+								? previewSummary
+								: validationErrors[ 0 ] }
+						</div>
+					) }
+				</div>
 				<div className="wp-block-abtest-block-test__stage">
 					<InnerBlocks
 						allowedBlocks={ ALLOWED_BLOCKS }
@@ -1243,6 +1443,13 @@ function formatWeightSummary(
 				`${ key.toUpperCase() } ${ String( weights[ key ] ?? 0 ) }%`
 		)
 		.join( ' / ' );
+}
+
+function getLatestStatsUpdatedAt( stats?: AbTestStatsResponse ) {
+	return Math.max(
+		Number( stats?.instance.updatedAt ?? 0 ),
+		Number( stats?.experiment.updatedAt ?? 0 )
+	);
 }
 
 function getWinnerPreviewState(
