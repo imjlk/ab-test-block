@@ -1,5 +1,11 @@
 # ab-test-block
 
+## 0.3.0 — 2026-04-02
+
+### Minor changes
+
+- [299e920](https://github.com/imjlk/ab-test-block/commit/299e92035e8f7574963b2b4e98ddc641afc87bf2) Added editor-visible stats, browser stats events, and a documented sticky scope model for instance- and experiment-level assignment behavior. — Thanks @imjlk!
+
 ## 0.2.1 — 2026-04-01
 
 ### Added
