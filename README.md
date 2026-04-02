@@ -39,10 +39,10 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 
 ## WordPress Playground
 
--   Open the latest released GitHub demo in Playground: [Open in Playground](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fimjlk%2Fab-test-block%2Fmain%2F.wordpress-org%2Fblueprints%2Fgithub-blueprint.json)
--   That README link intentionally installs the latest GitHub Release zip. It does not preview untagged `main` changes.
+-   Open the latest `main` build in Playground: [Open in Playground](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fimjlk%2Fab-test-block%2Fplayground-build%2F.wordpress-org%2Fblueprints%2Fgithub-blueprint.json)
+-   That README link uses the generated `playground-build` branch, which is refreshed from `main` and serves the current built plugin zip plus blueprint.
 -   `bun run playground:sync` regenerates the tracked blueprint files under `.wordpress-org/blueprints/`.
--   `bun run playground:preview-link` prints the raw GitHub blueprint URL and the matching Playground link for the current repository remote.
+-   `bun run playground:preview-link` prints the raw `playground-build` blueprint URL and the matching Playground link for the current repository remote.
 -   `.wordpress-org/blueprints/blueprint.json` is the WordPress.org preview blueprint that is meant to land in the plugin SVN assets path as `assets/blueprints/blueprint.json`.
 -   `bun run wordpress-org:copy-assets -- --target=/path/to/svn/assets` copies `.wordpress-org/*` into the exact SVN assets layout for future deployment automation.
 -   Pull requests from this repository get a Playground preview button in the PR description with the current branch build installed.

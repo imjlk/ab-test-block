@@ -2,7 +2,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const DEFAULT_BRANCH = 'main';
+const DEFAULT_BRANCH = 'playground-build';
 const DEFAULT_LANDING_PAGE = '/wp-admin/post.php?post=1001&action=edit';
 const DEFAULT_PHP_VERSION = '8.3';
 const DEFAULT_WP_VERSION = 'latest';
@@ -190,8 +190,8 @@ function hydrateTemplate(
 	return JSON.parse( template ) as JsonRecord;
 }
 
-function getLatestReleaseZipUrl( repositorySlug: string ) {
-	return `https://github.com/${ repositorySlug }/releases/latest/download/${ DEFAULT_PLUGIN_ZIP_NAME }`;
+function getRawGithubZipUrl( repositorySlug: string, branch: string ) {
+	return `https://raw.githubusercontent.com/${ repositorySlug }/${ branch }/${ DEFAULT_PLUGIN_ZIP_NAME }`;
 }
 
 function getRawGithubBlueprintUrl( repositorySlug: string, branch: string ) {
@@ -210,12 +210,13 @@ function writeJsonFile( targetPath: string, data: unknown ) {
 
 function syncBlueprintFiles() {
 	const repositorySlug = getRepositorySlug();
+	const branch = getBranchName();
 	const githubBlueprint = hydrateTemplate( GITHUB_TEMPLATE, {
 		LANDING_PAGE: DEFAULT_LANDING_PAGE,
 		PHP_VERSION: DEFAULT_PHP_VERSION,
 		PLUGIN_ZIP_URL:
 			getArgValue( '--plugin-zip-url' ) ??
-			getLatestReleaseZipUrl( repositorySlug ),
+			getRawGithubZipUrl( repositorySlug, branch ),
 		RUN_PHP_CODE: buildRunPhpCode(),
 		WP_VERSION: DEFAULT_WP_VERSION,
 	} );
@@ -244,12 +245,13 @@ function printLinks() {
 
 function printInlineBlueprint() {
 	const repositorySlug = getRepositorySlug();
+	const branch = getBranchName();
 	const githubBlueprint = hydrateTemplate( GITHUB_TEMPLATE, {
 		LANDING_PAGE: DEFAULT_LANDING_PAGE,
 		PHP_VERSION: DEFAULT_PHP_VERSION,
 		PLUGIN_ZIP_URL:
 			getArgValue( '--plugin-zip-url' ) ??
-			getLatestReleaseZipUrl( repositorySlug ),
+			getRawGithubZipUrl( repositorySlug, branch ),
 		RUN_PHP_CODE: buildRunPhpCode(),
 		WP_VERSION: DEFAULT_WP_VERSION,
 	} );

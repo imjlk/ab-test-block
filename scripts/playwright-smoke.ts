@@ -572,21 +572,9 @@ async function run() {
 	await frontPage.goto( `${ BASE_URL }/?p=${ statsPostId }`, {
 		waitUntil: 'domcontentloaded',
 	} );
-	await frontPage.waitForFunction(
-		() =>
-			Array.isArray(
-				( window as typeof window & { dataLayer?: unknown[] } )
-					.dataLayer
-			) &&
-			(
-				(
-					window as typeof window & {
-						dataLayer?: Array< { event?: string } >;
-					}
-				 ).dataLayer ?? []
-			).some( ( entry ) => entry.event === 'abtest_assigned' ),
-		undefined,
-		{ timeout: 10000 }
+	await frontPage.waitForSelector(
+		'.wp-block-abtest-block-test[data-abtest-ready="true"]',
+		{ timeout: 15000 }
 	);
 	await frontPage.waitForFunction(
 		() =>

@@ -21,7 +21,7 @@
 			"step": "installPlugin",
 			"pluginZipFile": {
 				"resource": "url",
-				"url": "https://github.com/imjlk/ab-test-block/releases/latest/download/ab-test-block.zip"
+				"url": "https://raw.githubusercontent.com/imjlk/ab-test-block/playground-build/ab-test-block.zip"
 			},
 			"options": {
 				"activate": true
