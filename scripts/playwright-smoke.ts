@@ -163,13 +163,81 @@ async function openEditor( page: Page, postId: number ) {
 	await page.waitForTimeout( 3000 );
 }
 
-async function selectParentBlock( page: Page ) {
-	const frame = page.frameLocator( 'iframe[name="editor-canvas"]' );
+async function waitForParentBlock( page: Page, blockInstanceId: string ) {
+	await page.waitForFunction(
+		( currentBlockInstanceId ) => {
+			const wpData = (
+				window as typeof window & {
+					wp?: {
+						data?: {
+							select?: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp?.data;
 
-	await frame.locator( '.wp-block-abtest-block-test__title' ).first().click();
-	await page.waitForTimeout( 1000 );
+			if ( ! wpData?.select ) {
+				return false;
+			}
 
-	return frame;
+			return wpData
+				.select( 'core/block-editor' )
+				.getBlocks()
+				.some(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						currentBlockInstanceId
+				);
+		},
+		blockInstanceId,
+		{ timeout: 30000 }
+	);
+}
+
+async function selectParentBlock( page: Page, blockInstanceId: string ) {
+	await waitForParentBlock( page, blockInstanceId );
+
+	await page.evaluate( ( currentBlockInstanceId ) => {
+		const wpData = (
+			window as typeof window & {
+				wp: {
+					data: {
+						dispatch: ( store: string ) => {
+							selectBlock: ( clientId: string ) => void;
+						};
+						select: ( store: string ) => {
+							getBlocks: () => Array< {
+								attributes: Record< string, unknown >;
+								clientId: string;
+							} >;
+						};
+					};
+				};
+			}
+		 ).wp;
+		const editor = wpData.data.select( 'core/block-editor' );
+		const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+		const parentBlock = editor
+			.getBlocks()
+			.find(
+				( block ) =>
+					block.attributes.blockInstanceId === currentBlockInstanceId
+			);
+
+		if ( ! parentBlock ) {
+			throw new Error( 'Missing parent block to select' );
+		}
+
+		dispatcher.selectBlock( parentBlock.clientId );
+	}, blockInstanceId );
+
+	await page.waitForTimeout( 800 );
+
+	return page.frameLocator( 'iframe[name="editor-canvas"]' );
 }
 
 async function openDebugPanel( page: Page ) {
@@ -421,7 +489,7 @@ async function run() {
 	await loginToWpAdmin( adminPage );
 	await openEditor( adminPage, statsPostId );
 
-	let frame = await selectParentBlock( adminPage );
+	let frame = await selectParentBlock( adminPage, 'e2einstats1' );
 	await frame.locator( '.wp-block-abtest-block-test__tab' ).nth( 1 ).click();
 	await adminPage.waitForTimeout( 500 );
 	assert(
@@ -623,7 +691,7 @@ async function run() {
 	);
 
 	await openEditor( adminPage, statsPostId );
-	frame = await selectParentBlock( adminPage );
+	frame = await selectParentBlock( adminPage, 'e2einstats1' );
 	const sidebar = await openDebugPanel( adminPage );
 	await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
 	await adminPage.waitForTimeout( 1200 );
