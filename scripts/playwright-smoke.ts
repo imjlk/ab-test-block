@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { chromium, type Browser, type Page } from 'playwright';
 
+type SmokeMode = 'core' | 'editor' | 'full';
 type StickyScope = 'experiment' | 'instance';
 type VariantKey = 'a' | 'b';
 
@@ -10,9 +11,11 @@ const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
 const ADMIN_USER = process.env.AB_TEST_BLOCK_ADMIN_USER ?? 'admin';
 const ADMIN_PASSWORD = process.env.AB_TEST_BLOCK_ADMIN_PASSWORD ?? 'password';
 const WP_ENV_BIN = join( process.cwd(), 'node_modules', '.bin', 'wp-env' );
-const INCLUDE_EDITOR_CHECKS =
-	process.env.AB_TEST_BLOCK_SMOKE_INCLUDE_EDITOR !== '0' &&
-	process.env.CI !== 'true';
+const SMOKE_MODE = getSmokeMode(
+	process.env.AB_TEST_BLOCK_SMOKE_MODE ?? 'full'
+);
+const RUN_CORE_CHECKS = SMOKE_MODE === 'core' || SMOKE_MODE === 'full';
+const RUN_EDITOR_CHECKS = SMOKE_MODE === 'editor' || SMOKE_MODE === 'full';
 
 const createdPostIds: number[] = [];
 const browsers: Browser[] = [];
@@ -29,6 +32,18 @@ function assert( condition: unknown, message: string ): asserts condition {
 	if ( ! condition ) {
 		throw new Error( message );
 	}
+}
+
+function getSmokeMode( value: string ): SmokeMode {
+	if ( value === 'core' || value === 'editor' || value === 'full' ) {
+		return value;
+	}
+
+	writeWarning(
+		`Unknown AB_TEST_BLOCK_SMOKE_MODE "${ value }"; defaulting to "full".`
+	);
+
+	return 'full';
 }
 
 function runWp( args: string[] ) {
@@ -140,6 +155,44 @@ async function launchContext( initScript?: () => void ) {
 	return context;
 }
 
+function createFrontInitScript() {
+	return () => {
+		( window as typeof window & { dataLayer?: unknown[] } ).dataLayer = [];
+		window.IntersectionObserver = class InstantIntersectionObserver {
+			private readonly callback: IntersectionObserverCallback;
+
+			constructor( callback: IntersectionObserverCallback ) {
+				this.callback = callback;
+			}
+
+			disconnect() {}
+
+			observe( target: Element ) {
+				this.callback(
+					[
+						{
+							boundingClientRect: target.getBoundingClientRect(),
+							intersectionRatio: 1,
+							intersectionRect: target.getBoundingClientRect(),
+							isIntersecting: true,
+							rootBounds: null,
+							target,
+							time: performance.now(),
+						},
+					] as IntersectionObserverEntry[],
+					this as unknown as IntersectionObserver
+				);
+			}
+
+			takeRecords() {
+				return [];
+			}
+
+			unobserve() {}
+		} as typeof window.IntersectionObserver;
+	};
+}
+
 async function waitForFrontStatsEvent( page: Page ) {
 	const attempts = 3;
 
@@ -167,30 +220,49 @@ async function waitForFrontStatsEvent( page: Page ) {
 			return;
 		} catch ( error ) {
 			if ( attempt === attempts ) {
-				const diagnostics = await page.evaluate( () => ( {
-					dataLayerEvents: (
-						(
-							window as typeof window & {
-								dataLayer?: Array< { event?: string } >;
-							}
-						 ).dataLayer ?? []
-					).map( ( entry ) => entry.event ?? '(missing-event)' ),
-					rootCount: document.querySelectorAll(
-						'.wp-block-abtest-block-test'
-					).length,
-					rootStates: Array.from(
-						document.querySelectorAll(
+				const diagnostics = await page.evaluate( () => {
+					const stickyLocalStorage = Array.from(
+						{ length: window.localStorage.length },
+						( _, index ) => {
+							const key = window.localStorage.key( index ) ?? '';
+
+							return {
+								key,
+								value: window.localStorage.getItem( key ),
+							};
+						}
+					).filter(
+						( entry ) =>
+							entry.key.startsWith( 'abtest:' ) ||
+							entry.key.startsWith( 'abtest-exp:' )
+					);
+
+					return {
+						dataLayerEvents: (
+							(
+								window as typeof window & {
+									dataLayer?: Array< { event?: string } >;
+								}
+							 ).dataLayer ?? []
+						).map( ( entry ) => entry.event ?? '(missing-event)' ),
+						rootCount: document.querySelectorAll(
 							'.wp-block-abtest-block-test'
-						)
-					).map( ( element ) => ( {
-						ready: element.getAttribute( 'data-abtest-ready' ),
-						runtimeLabel:
-							element.querySelector(
-								'.wp-block-abtest-block-test__runtime-label'
-							)?.textContent ?? null,
-					} ) ),
-					title: document.title,
-				} ) );
+						).length,
+						rootStates: Array.from(
+							document.querySelectorAll(
+								'.wp-block-abtest-block-test'
+							)
+						).map( ( element ) => ( {
+							ready: element.getAttribute( 'data-abtest-ready' ),
+							runtimeLabel:
+								element.querySelector(
+									'.wp-block-abtest-block-test__runtime-label'
+								)?.textContent ?? null,
+						} ) ),
+						stickyLocalStorage,
+						title: document.title,
+					};
+				} );
 				throw new Error(
 					`Front-end smoke did not observe abtest_stats after ${ attempts } attempts. Diagnostics: ${ JSON.stringify(
 						diagnostics
@@ -309,16 +381,44 @@ async function selectParentBlock( page: Page, blockInstanceId: string ) {
 
 async function openSidebarPanel( page: Page, title: string ) {
 	const sidebar = page.locator( '.interface-interface-skeleton__sidebar' );
-	const toggle = sidebar
-		.locator( 'button' )
-		.filter( { hasText: new RegExp( `^${ title }$` ) } )
-		.first();
-	const expanded = await toggle.getAttribute( 'aria-expanded' );
+	await sidebar.waitFor( { state: 'visible', timeout: 30000 } );
+	await page.evaluate( ( panelTitle ) => {
+		const sidebarElement = document.querySelector(
+			'.interface-interface-skeleton__sidebar'
+		);
+		const buttons = Array.from(
+			sidebarElement?.querySelectorAll( 'button' ) ?? []
+		) as HTMLButtonElement[];
+		const blockTab = buttons.find(
+			( element ) => element.textContent?.trim() === 'Block'
+		);
 
-	if ( expanded !== 'true' ) {
-		await toggle.click();
-		await page.waitForTimeout( 1000 );
-	}
+		blockTab?.click();
+
+		const toggle = buttons.find(
+			( element ) => element.textContent?.trim() === panelTitle
+		);
+
+		if ( ! toggle ) {
+			throw new Error( `Missing sidebar panel toggle: ${ panelTitle }` );
+		}
+
+		if ( toggle.getAttribute( 'aria-expanded' ) !== 'true' ) {
+			toggle.click();
+		}
+	}, title );
+	await page.waitForFunction(
+		( panelTitle ) => {
+			const sidebarElement = document.querySelector(
+				'.interface-interface-skeleton__sidebar'
+			);
+
+			return sidebarElement?.textContent?.includes( panelTitle ) ?? false;
+		},
+		title,
+		{ timeout: 30000 }
+	);
+	await page.waitForTimeout( 1000 );
 
 	return sidebar;
 }
@@ -533,20 +633,7 @@ async function getVisibleVariantTexts( page: Page ) {
 		);
 }
 
-async function run() {
-	const statsPostId = createFixturePost(
-		'E2E Stats Fixture',
-		buildExperimentBlock( {
-			blockInstanceId: 'e2einstats1',
-			emitDataLayer: true,
-			experimentId: 'e2e_stats_fixture',
-			experimentLabel: 'Stats Fixture',
-			stickyAssignment: true,
-			stickyScope: 'instance',
-			variantABody: 'Stats Variant A body',
-			variantBBody: 'Stats Variant B body',
-		} )
-	);
+async function runCoreSmoke( statsPostId: number ) {
 	const nonStickyPostId = createFixturePost(
 		'E2E Non Sticky Fixture',
 		buildExperimentBlock( {
@@ -583,193 +670,8 @@ async function run() {
 			variantBBody: 'Shared Scope Two Variant B body',
 		} )
 	);
-	const editorPostId = INCLUDE_EDITOR_CHECKS
-		? createFixturePost(
-				'E2E Editor Fixture',
-				`${ buildExperimentBlock( {
-					blockInstanceId: 'e2eeditorfixture1',
-					experimentId: 'e2e_editor_fixture',
-					experimentLabel: 'Editor Fixture',
-					stickyAssignment: true,
-					stickyScope: 'instance',
-					variantABody: 'Editor Variant A body',
-					variantBBody: 'Editor Variant B body',
-				} ) }${ buildParagraph( 'Outside block' ) }`
-		  )
-		: undefined;
 
-	let adminPage: Page | undefined;
-
-	if ( INCLUDE_EDITOR_CHECKS ) {
-		const adminContext = await launchContext();
-		adminPage = await adminContext.newPage();
-
-		await loginToWpAdmin( adminPage );
-		await openEditor( adminPage, editorPostId ?? statsPostId );
-
-		const frame = await selectParentBlock( adminPage, 'e2eeditorfixture1' );
-		assert(
-			( await frame
-				.locator( '.wp-block-abtest-block-test__tabs' )
-				.count() ) === 0,
-			'Expected canvas variant tabs to be removed from the editor shell'
-		);
-		assert(
-			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
-			'Expected the A/B test parent block to stay selected after selection sync'
-		);
-		await adminPage
-			.locator( '[role="toolbar"] button[aria-label="Edit Variant B"]' )
-			.click();
-		await adminPage.waitForTimeout( 500 );
-		assert(
-			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
-			'Expected toolbar variant switching to keep parent block selection'
-		);
-		assert(
-			(
-				await frame
-					.locator( '.wp-block-abtest-block-variant.is-active' )
-					.first()
-					.innerText()
-			).includes( 'Editor Variant B body' ),
-			'Expected toolbar variant switching to show Variant B content in the editor canvas'
-		);
-		await adminPage
-			.locator( '[role="toolbar"] button[aria-label="Winner preview"]' )
-			.click();
-		await adminPage.waitForTimeout( 400 );
-		assert(
-			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
-			'Expected Winner preview toolbar action to keep parent block selection'
-		);
-		await adminPage
-			.locator( '[role="toolbar"] button[aria-label="Traffic mode"]' )
-			.click();
-		await adminPage.waitForTimeout( 400 );
-		assert(
-			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
-			'Expected Traffic mode toolbar action to keep parent block selection'
-		);
-
-		const insertedHeading = 'Playwright smoke heading';
-		await insertHeadingIntoVariant(
-			adminPage,
-			'e2eeditorfixture1',
-			'b',
-			insertedHeading
-		);
-		await frame
-			.getByText( insertedHeading )
-			.waitFor( { state: 'visible' } );
-		await removeHeadingFromVariant( adminPage, 'e2eeditorfixture1', 'b' );
-		await adminPage.waitForTimeout( 500 );
-		assert(
-			( await frame.getByText( insertedHeading ).count() ) === 0,
-			'Expected inserted heading block to be removable inside the variant container'
-		);
-		await frame.getByText( 'Outside block' ).click();
-		await adminPage.waitForTimeout( 500 );
-		assert(
-			( await frame
-				.locator( '.wp-block-abtest-block-variant.is-active' )
-				.count() ) === 1,
-			'Expected the visible variant to remain rendered after selecting an outside block'
-		);
-
-		const advancedSidebar = await openSidebarPanel( adminPage, 'Advanced' );
-		const advancedSidebarText = await advancedSidebar.innerText();
-		if ( advancedSidebarText.includes( 'Edit Experiment ID' ) ) {
-			await adminPage.evaluate( () => {
-				const sidebar = document.querySelector(
-					'.interface-interface-skeleton__sidebar'
-				);
-				const button = Array.from(
-					sidebar?.querySelectorAll( 'button' ) ?? []
-				).find(
-					( element ) =>
-						element.textContent?.includes( 'Edit Experiment ID' )
-				) as HTMLButtonElement | undefined;
-
-				if ( ! button ) {
-					throw new Error( 'Missing Edit Experiment ID button' );
-				}
-
-				button.click();
-			} );
-			await adminPage.waitForTimeout( 300 );
-			assert(
-				( await advancedSidebar
-					.getByText( 'Changing the Experiment ID after stats exist' )
-					.count() ) === 1,
-				'Expected Experiment ID warning to appear while editing the advanced field'
-			);
-			await adminPage.evaluate( () => {
-				const sidebar = document.querySelector(
-					'.interface-interface-skeleton__sidebar'
-				);
-				const button = Array.from(
-					sidebar?.querySelectorAll( 'button' ) ?? []
-				).find(
-					( element ) =>
-						element.textContent?.includes( 'Done editing ID' )
-				) as HTMLButtonElement | undefined;
-
-				if ( ! button ) {
-					throw new Error( 'Missing Done editing ID button' );
-				}
-
-				button.click();
-			} );
-			await adminPage.waitForTimeout( 300 );
-			assert(
-				( await advancedSidebar
-					.getByText( 'Changing the Experiment ID after stats exist' )
-					.count() ) === 0,
-				'Expected Experiment ID to relock after leaving edit mode'
-			);
-		} else {
-			writeWarning(
-				'Skipping Experiment ID editor smoke check because the Advanced panel control text was not discoverable in this editor session.'
-			);
-		}
-	}
-
-	const frontContext = await launchContext( () => {
-		( window as typeof window & { dataLayer?: unknown[] } ).dataLayer = [];
-		window.IntersectionObserver = class InstantIntersectionObserver {
-			private readonly callback: IntersectionObserverCallback;
-
-			constructor( callback: IntersectionObserverCallback ) {
-				this.callback = callback;
-			}
-
-			disconnect() {}
-
-			observe( target: Element ) {
-				this.callback(
-					[
-						{
-							boundingClientRect: target.getBoundingClientRect(),
-							intersectionRatio: 1,
-							intersectionRect: target.getBoundingClientRect(),
-							isIntersecting: true,
-							rootBounds: null,
-							target,
-							time: performance.now(),
-						},
-					] as IntersectionObserverEntry[],
-					this as unknown as IntersectionObserver
-				);
-			}
-
-			takeRecords() {
-				return [];
-			}
-
-			unobserve() {}
-		} as typeof window.IntersectionObserver;
-	} );
+	const frontContext = await launchContext( createFrontInitScript() );
 	const frontPage = await frontContext.newPage();
 
 	await frontPage.goto( `${ BASE_URL }/?p=${ statsPostId }`, {
@@ -892,29 +794,193 @@ async function run() {
 			),
 		'Expected experiment-scope sticky assignment to carry across posts with the same experimentId'
 	);
+}
 
-	if ( adminPage ) {
-		await openEditor( adminPage, statsPostId );
-		const frame = await selectParentBlock( adminPage, 'e2einstats1' );
-		void frame;
-		const sidebar = await openDebugPanel( adminPage );
-		await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
-		await adminPage.waitForTimeout( 1200 );
+async function runEditorSmoke( statsPostId: number ) {
+	const frontContext = await launchContext( createFrontInitScript() );
+	const frontPage = await frontContext.newPage();
 
-		const debugText = await sidebar.innerText();
+	await frontPage.goto( `${ BASE_URL }/?p=${ statsPostId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await waitForFrontStatsEvent( frontPage );
+
+	const adminContext = await launchContext();
+	const adminPage = await adminContext.newPage();
+
+	await loginToWpAdmin( adminPage );
+	await openEditor( adminPage, statsPostId );
+
+	const frame = await selectParentBlock( adminPage, 'e2einstats1' );
+	assert(
+		( await frame
+			.locator( '.wp-block-abtest-block-test__tabs' )
+			.count() ) === 0,
+		'Expected canvas variant tabs to be removed from the editor shell'
+	);
+	assert(
+		await isParentBlockSelected( adminPage, 'e2einstats1' ),
+		'Expected the A/B test parent block to stay selected after selection sync'
+	);
+	await adminPage
+		.locator( '[role="toolbar"] button[aria-label="Edit Variant B"]' )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		await isParentBlockSelected( adminPage, 'e2einstats1' ),
+		'Expected toolbar variant switching to keep parent block selection'
+	);
+	assert(
+		(
+			await frame
+				.locator( '.wp-block-abtest-block-variant.is-active' )
+				.first()
+				.innerText()
+		).includes( 'Stats Variant B body' ),
+		'Expected toolbar variant switching to show Variant B content in the editor canvas'
+	);
+	await adminPage
+		.locator( '[role="toolbar"] button[aria-label="Winner preview"]' )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		await isParentBlockSelected( adminPage, 'e2einstats1' ),
+		'Expected Winner preview toolbar action to keep parent block selection'
+	);
+	await adminPage
+		.locator( '[role="toolbar"] button[aria-label="Traffic mode"]' )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		await isParentBlockSelected( adminPage, 'e2einstats1' ),
+		'Expected Traffic mode toolbar action to keep parent block selection'
+	);
+
+	const insertedHeading = 'Playwright smoke heading';
+	await insertHeadingIntoVariant(
+		adminPage,
+		'e2einstats1',
+		'b',
+		insertedHeading
+	);
+	await frame.getByText( insertedHeading ).waitFor( { state: 'visible' } );
+	await removeHeadingFromVariant( adminPage, 'e2einstats1', 'b' );
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		( await frame.getByText( insertedHeading ).count() ) === 0,
+		'Expected inserted heading block to be removable inside the variant container'
+	);
+	await frame.getByText( 'Outside block' ).click();
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		( await frame
+			.locator( '.wp-block-abtest-block-variant.is-active' )
+			.count() ) === 1,
+		'Expected the visible variant to remain rendered after selecting an outside block'
+	);
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	await adminPage.waitForTimeout( 500 );
+
+	const sidebar = await openDebugPanel( adminPage );
+	await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
+	await adminPage.waitForTimeout( 1200 );
+
+	const debugText = await sidebar.innerText();
+	assert(
+		debugText.includes( 'This block' ) &&
+			debugText.includes( 'This experiment' ),
+		'Expected Debug panel to show both block and experiment stats cards'
+	);
+	assert(
+		debugText.includes( '1 impressions' ),
+		'Expected Debug panel to reflect the counted front-end impression'
+	);
+	assert(
+		debugText.includes( 'Assignment source in traffic mode:' ),
+		'Expected Debug panel to show the current assignment source text'
+	);
+
+	const advancedSidebar = await openSidebarPanel( adminPage, 'Advanced' );
+	const advancedSidebarText = await advancedSidebar.innerText();
+	if ( advancedSidebarText.includes( 'Edit Experiment ID' ) ) {
+		await adminPage.evaluate( () => {
+			const sidebarElement = document.querySelector(
+				'.interface-interface-skeleton__sidebar'
+			);
+			const button = Array.from(
+				sidebarElement?.querySelectorAll( 'button' ) ?? []
+			).find(
+				( element ) =>
+					element.textContent?.includes( 'Edit Experiment ID' )
+			) as HTMLButtonElement | undefined;
+
+			if ( ! button ) {
+				throw new Error( 'Missing Edit Experiment ID button' );
+			}
+
+			button.click();
+		} );
+		await adminPage.waitForTimeout( 300 );
 		assert(
-			debugText.includes( 'This block' ) &&
-				debugText.includes( 'This experiment' ),
-			'Expected Debug panel to show both block and experiment stats cards'
+			( await advancedSidebar
+				.getByText( 'Changing the Experiment ID after stats exist' )
+				.count() ) === 1,
+			'Expected Experiment ID warning to appear while editing the advanced field'
 		);
+		await adminPage.evaluate( () => {
+			const sidebarElement = document.querySelector(
+				'.interface-interface-skeleton__sidebar'
+			);
+			const button = Array.from(
+				sidebarElement?.querySelectorAll( 'button' ) ?? []
+			).find(
+				( element ) =>
+					element.textContent?.includes( 'Done editing ID' )
+			) as HTMLButtonElement | undefined;
+
+			if ( ! button ) {
+				throw new Error( 'Missing Done editing ID button' );
+			}
+
+			button.click();
+		} );
+		await adminPage.waitForTimeout( 300 );
 		assert(
-			debugText.includes( '1 impressions' ),
-			'Expected Debug panel to reflect the counted front-end impression'
+			( await advancedSidebar
+				.getByText( 'Changing the Experiment ID after stats exist' )
+				.count() ) === 0,
+			'Expected Experiment ID to relock after leaving edit mode'
 		);
-		assert(
-			debugText.includes( 'Assignment source in traffic mode:' ),
-			'Expected Debug panel to show the current assignment source text'
+	} else {
+		writeWarning(
+			'Skipping Experiment ID editor smoke check because the Advanced panel control text was not discoverable in this editor session.'
 		);
+	}
+}
+
+async function run() {
+	writeLog( `Playwright smoke mode: ${ SMOKE_MODE }` );
+
+	const statsPostId = createFixturePost(
+		'E2E Stats Fixture',
+		`${ buildExperimentBlock( {
+			blockInstanceId: 'e2einstats1',
+			emitDataLayer: true,
+			experimentId: 'e2e_stats_fixture',
+			experimentLabel: 'Stats Fixture',
+			stickyAssignment: true,
+			stickyScope: 'instance',
+			variantABody: 'Stats Variant A body',
+			variantBBody: 'Stats Variant B body',
+		} ) }${ buildParagraph( 'Outside block' ) }`
+	);
+
+	if ( RUN_CORE_CHECKS ) {
+		await runCoreSmoke( statsPostId );
+	}
+
+	if ( RUN_EDITOR_CHECKS ) {
+		await runEditorSmoke( statsPostId );
 	}
 
 	writeLog( 'Playwright smoke passed.' );

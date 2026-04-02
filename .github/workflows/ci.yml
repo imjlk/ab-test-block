@@ -183,9 +183,7 @@ jobs:
               run: bunx playwright install --with-deps chromium
 
             - name: Run Playwright smoke
-              env:
-                  AB_TEST_BLOCK_SMOKE_INCLUDE_EDITOR: '0'
-              run: bun run smoke:e2e
+              run: bun run smoke:e2e:core
 
             - name: Stop WordPress
               if: always()
