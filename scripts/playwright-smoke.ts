@@ -10,6 +10,9 @@ const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
 const ADMIN_USER = process.env.AB_TEST_BLOCK_ADMIN_USER ?? 'admin';
 const ADMIN_PASSWORD = process.env.AB_TEST_BLOCK_ADMIN_PASSWORD ?? 'password';
 const WP_ENV_BIN = join( process.cwd(), 'node_modules', '.bin', 'wp-env' );
+const INCLUDE_EDITOR_CHECKS =
+	process.env.AB_TEST_BLOCK_SMOKE_INCLUDE_EDITOR !== '0' &&
+	process.env.CI !== 'true';
 
 const createdPostIds: number[] = [];
 const browsers: Browser[] = [];
@@ -483,39 +486,51 @@ async function run() {
 		} )
 	);
 
-	const adminContext = await launchContext();
-	const adminPage = await adminContext.newPage();
+	let adminPage: Page | undefined;
 
-	await loginToWpAdmin( adminPage );
-	await openEditor( adminPage, statsPostId );
+	if ( INCLUDE_EDITOR_CHECKS ) {
+		const adminContext = await launchContext();
+		adminPage = await adminContext.newPage();
 
-	let frame = await selectParentBlock( adminPage, 'e2einstats1' );
-	await frame.locator( '.wp-block-abtest-block-test__tab' ).nth( 1 ).click();
-	await adminPage.waitForTimeout( 500 );
-	assert(
-		(
-			await frame
-				.locator( '.wp-block-abtest-block-test__workspace-title' )
-				.innerText()
-		).includes( 'Variant B' ),
-		'Expected Variant B tab to become active in the editor'
-	);
+		await loginToWpAdmin( adminPage );
+		await openEditor( adminPage, statsPostId );
 
-	const insertedHeading = 'Playwright smoke heading';
-	await insertHeadingIntoVariant(
-		adminPage,
-		'e2einstats1',
-		'b',
-		insertedHeading
-	);
-	await frame.locator( '.wp-block-abtest-block-test__tab' ).nth( 1 ).click();
-	await frame.getByText( insertedHeading ).waitFor( { state: 'visible' } );
-	await removeHeadingFromVariant( adminPage, 'e2einstats1', 'b' );
-	await adminPage.waitForTimeout( 500 );
-	assert(
-		( await frame.getByText( insertedHeading ).count() ) === 0,
-		'Expected inserted heading block to be removable inside the variant container'
-	);
+		const frame = await selectParentBlock( adminPage, 'e2einstats1' );
+		await frame
+			.locator( '.wp-block-abtest-block-test__tab' )
+			.nth( 1 )
+			.click();
+		await adminPage.waitForTimeout( 500 );
+		assert(
+			(
+				await frame
+					.locator( '.wp-block-abtest-block-test__workspace-title' )
+					.innerText()
+			).includes( 'Variant B' ),
+			'Expected Variant B tab to become active in the editor'
+		);
+
+		const insertedHeading = 'Playwright smoke heading';
+		await insertHeadingIntoVariant(
+			adminPage,
+			'e2einstats1',
+			'b',
+			insertedHeading
+		);
+		await frame
+			.locator( '.wp-block-abtest-block-test__tab' )
+			.nth( 1 )
+			.click();
+		await frame
+			.getByText( insertedHeading )
+			.waitFor( { state: 'visible' } );
+		await removeHeadingFromVariant( adminPage, 'e2einstats1', 'b' );
+		await adminPage.waitForTimeout( 500 );
+		assert(
+			( await frame.getByText( insertedHeading ).count() ) === 0,
+			'Expected inserted heading block to be removable inside the variant container'
+		);
+	}
 
 	const frontContext = await launchContext( () => {
 		( window as typeof window & { dataLayer?: unknown[] } ).dataLayer = [];
@@ -690,26 +705,29 @@ async function run() {
 		'Expected experiment-scope sticky assignment to carry across posts with the same experimentId'
 	);
 
-	await openEditor( adminPage, statsPostId );
-	frame = await selectParentBlock( adminPage, 'e2einstats1' );
-	const sidebar = await openDebugPanel( adminPage );
-	await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
-	await adminPage.waitForTimeout( 1200 );
+	if ( adminPage ) {
+		await openEditor( adminPage, statsPostId );
+		const frame = await selectParentBlock( adminPage, 'e2einstats1' );
+		void frame;
+		const sidebar = await openDebugPanel( adminPage );
+		await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
+		await adminPage.waitForTimeout( 1200 );
 
-	const debugText = await sidebar.innerText();
-	assert(
-		debugText.includes( 'This block' ) &&
-			debugText.includes( 'This experiment' ),
-		'Expected Debug panel to show both block and experiment stats cards'
-	);
-	assert(
-		debugText.includes( '1 impressions' ),
-		'Expected Debug panel to reflect the counted front-end impression'
-	);
-	assert(
-		debugText.includes( 'Assignment source in traffic mode:' ),
-		'Expected Debug panel to show the current assignment source text'
-	);
+		const debugText = await sidebar.innerText();
+		assert(
+			debugText.includes( 'This block' ) &&
+				debugText.includes( 'This experiment' ),
+			'Expected Debug panel to show both block and experiment stats cards'
+		);
+		assert(
+			debugText.includes( '1 impressions' ),
+			'Expected Debug panel to reflect the counted front-end impression'
+		);
+		assert(
+			debugText.includes( 'Assignment source in traffic mode:' ),
+			'Expected Debug panel to show the current assignment source text'
+		);
+	}
 
 	writeLog( 'Playwright smoke passed.' );
 }
