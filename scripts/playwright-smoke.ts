@@ -584,9 +584,25 @@ async function run() {
 						dataLayer?: Array< { event?: string } >;
 					}
 				 ).dataLayer ?? []
-			).some( ( entry ) => entry.event === 'abtest_stats' ),
+			).some( ( entry ) => entry.event === 'abtest_assigned' ),
 		undefined,
 		{ timeout: 10000 }
+	);
+	await frontPage.waitForFunction(
+		() =>
+			Array.isArray(
+				( window as typeof window & { dataLayer?: unknown[] } )
+					.dataLayer
+			) &&
+			(
+				(
+					window as typeof window & {
+						dataLayer?: Array< { event?: string } >;
+					}
+				 ).dataLayer ?? []
+			).some( ( entry ) => entry.event === 'abtest_stats' ),
+		undefined,
+		{ timeout: 30000 }
 	);
 
 	const visibleVariantTexts = await getVisibleVariantTexts( frontPage );

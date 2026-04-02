@@ -39,7 +39,8 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 
 ## WordPress Playground
 
--   Open the latest GitHub-based demo in Playground: [Open in Playground](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fimjlk%2Fab-test-block%2Fmain%2F.wordpress-org%2Fblueprints%2Fgithub-blueprint.json)
+-   Open the latest released GitHub demo in Playground: [Open in Playground](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fimjlk%2Fab-test-block%2Fmain%2F.wordpress-org%2Fblueprints%2Fgithub-blueprint.json)
+-   That README link intentionally installs the latest GitHub Release zip. It does not preview untagged `main` changes.
 -   `bun run playground:sync` regenerates the tracked blueprint files under `.wordpress-org/blueprints/`.
 -   `bun run playground:preview-link` prints the raw GitHub blueprint URL and the matching Playground link for the current repository remote.
 -   `.wordpress-org/blueprints/blueprint.json` is the WordPress.org preview blueprint that is meant to land in the plugin SVN assets path as `assets/blueprints/blueprint.json`.
