@@ -28,13 +28,16 @@ $winner_data = function_exists( 'ab_test_block_get_winner_state' )
 		'variants'   => array(),
 		'windowDays' => (int) $attributes['evaluationWindowDays'],
 	);
+$tracking_enabled = function_exists( 'ab_test_block_is_tracking_enabled' )
+	? ab_test_block_is_tracking_enabled()
+	: true;
 $context     = array(
 	'automaticMetric'              => (string) $attributes['automaticMetric'],
 	'blockInstanceId'              => (string) $attributes['blockInstanceId'],
-	'emitBrowserEvents'            => ! empty( $attributes['emitBrowserEvents'] ),
-	'emitClarityHook'              => ! empty( $attributes['emitClarityHook'] ),
-	'emitDataLayer'                => ! empty( $attributes['emitDataLayer'] ),
-	'emitKexpLayer'                => ! empty( $attributes['emitKexpLayer'] ),
+	'emitBrowserEvents'            => $tracking_enabled && ! empty( $attributes['emitBrowserEvents'] ),
+	'emitClarityHook'              => $tracking_enabled && ! empty( $attributes['emitClarityHook'] ),
+	'emitDataLayer'                => $tracking_enabled && ! empty( $attributes['emitDataLayer'] ),
+	'emitKexpLayer'                => $tracking_enabled && ! empty( $attributes['emitKexpLayer'] ),
 	'evaluationWindowDays'         => (int) $attributes['evaluationWindowDays'],
 	'experimentId'                 => (string) $attributes['experimentId'],
 	'lockWinnerAfterSelection'     => ! empty( $attributes['lockWinnerAfterSelection'] ),
@@ -54,8 +57,8 @@ $context     = array(
 			$post_id,
 			(string) $attributes['blockInstanceId']
 		),
-	'trackClicks'                  => ! empty( $attributes['trackClicks'] ),
-	'trackImpressions'             => ! empty( $attributes['trackImpressions'] ),
+	'trackClicks'                  => $tracking_enabled && ! empty( $attributes['trackClicks'] ),
+	'trackImpressions'             => $tracking_enabled && ! empty( $attributes['trackImpressions'] ),
 	'variantCount'                 => (int) $attributes['variantCount'],
 	'variantKeys'                  => function_exists( 'ab_test_block_variant_keys' )
 		? ab_test_block_variant_keys( (int) $attributes['variantCount'] )
@@ -75,7 +78,7 @@ if ( ! empty( $attributes['manualWinner'] ) ) {
 	$context['manualWinner'] = (string) $attributes['manualWinner'];
 }
 
-if ( $post_id > 0 && function_exists( 'ab_test_block_create_public_write_token' ) ) {
+if ( $tracking_enabled && $post_id > 0 && function_exists( 'ab_test_block_create_public_write_token' ) ) {
 	$public_write = ab_test_block_create_public_write_token(
 		$post_id,
 		(string) $attributes['blockInstanceId'],

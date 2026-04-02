@@ -29,6 +29,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   The default sticky identity is browser `localStorage`, not cookies or logged-in user identity.
 -   Default sticky scope is the current page/block instance.
 -   Optional shared-experiment sticky uses the key `abtest-exp:{experimentId}`.
+-   Server-side stats are aggregate only. Individual browser sticky assignments are not readable from the server.
 -   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
 
 ## REST and Debug Surface
@@ -36,6 +37,15 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `GET /wp-json/abtest-block/v1/stats` returns both `instance` and `experiment` snapshots.
 -   `POST /wp-json/abtest-block/v1/event` and `POST /wp-json/abtest-block/v1/reevaluate` both return the latest stats snapshot.
 -   The editor Debug panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, and last update time.
+
+## Operations
+
+-   `wp abtest-block experiments --format=table|json [--limit=<n>]` lists tracked experiments with aggregate counts and last update time.
+-   `wp abtest-block stats --post=<id> --block-instance=<id>` shows the current block-instance snapshot.
+-   `wp abtest-block stats --experiment=<id>` shows the shared experiment aggregate snapshot.
+-   `wp abtest-block winner-state --post=<id> --block-instance=<id> --format=json` shows the stored winner snapshot for one block instance.
+-   `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` disables new tracking writes and browser-layer emits site-wide while keeping saved stats readable.
+-   Advanced installations can also short-circuit tracking through the `ab_test_block_tracking_enabled` filter.
 
 ## WordPress Playground
 
@@ -69,6 +79,7 @@ bun run build
 -   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
 -   GitHub Actions only hard-asserts `smoke:e2e:core`.
 -   The editor smoke keeps the `Advanced` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
+-   CI also runs a clean zip-install smoke that installs `ab-test-block.zip` into a fresh WordPress environment before checking routes and front-end render.
 
 ## Local WordPress Validation
 

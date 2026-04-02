@@ -29,6 +29,7 @@ Features included in this version:
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Debug stats for both the current block and shared experiment
+* Read-only WP-CLI commands for experiment and winner-state inspection
 
 Not included:
 
@@ -67,6 +68,14 @@ An impression is counted only when the active variant stays at least 50% visible
 = How is sticky assignment stored? =
 
 This version uses browser localStorage only. By default the sticky key is scoped to the current page and block instance. You can optionally switch sticky scope to the shared Experiment ID so the same browser sees a consistent variant across multiple pages.
+
+= Can the server inspect individual sticky visitors? =
+
+No. The server stores aggregate experiment stats only. Sticky assignment is browser localStorage state and is not individually queryable from the server.
+
+= How can I disable tracking quickly? =
+
+Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
 == Changelog ==
 

@@ -158,6 +158,14 @@ function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 	);
 }
 
+function ab_test_block_is_tracking_enabled() {
+	if ( defined( 'AB_TEST_BLOCK_DISABLE_TRACKING' ) && AB_TEST_BLOCK_DISABLE_TRACKING ) {
+		return false;
+	}
+
+	return (bool) apply_filters( 'ab_test_block_tracking_enabled', true );
+}
+
 function ab_test_block_get_default_winner_state( $window_days = 14 ) {
 	return array(
 		'evaluatedAt' => null,
@@ -274,6 +282,157 @@ function ab_test_block_update_winner_state( $post_id, $block_instance_id, $state
 	update_post_meta( $post_id, AB_TEST_BLOCK_WINNER_META_KEY, $state_map );
 
 	return $state_map[ $block_instance_id ];
+}
+
+function ab_test_block_find_experiment_attributes_in_blocks( $blocks, $experiment_id = null, $block_instance_id = null ) {
+	if ( ! is_array( $blocks ) ) {
+		return null;
+	}
+
+	foreach ( $blocks as $block ) {
+		if ( ! is_array( $block ) ) {
+			continue;
+		}
+
+		if ( 'abtest-block/test' === ( $block['blockName'] ?? null ) ) {
+			$attributes = ab_test_block_sanitize_experiment_attributes( $block['attrs'] ?? array() );
+
+			$matches_experiment = null === $experiment_id || (string) $attributes['experimentId'] === (string) $experiment_id;
+			$matches_instance   = null === $block_instance_id || (string) $attributes['blockInstanceId'] === (string) $block_instance_id;
+
+			if ( $matches_experiment && $matches_instance ) {
+				return $attributes;
+			}
+		}
+
+		$inner_match = ab_test_block_find_experiment_attributes_in_blocks(
+			$block['innerBlocks'] ?? array(),
+			$experiment_id,
+			$block_instance_id
+		);
+
+		if ( is_array( $inner_match ) ) {
+			return $inner_match;
+		}
+	}
+
+	return null;
+}
+
+function ab_test_block_collect_experiment_attributes_in_blocks( $blocks, $experiment_id = null ) {
+	if ( ! is_array( $blocks ) ) {
+		return array();
+	}
+
+	$matches = array();
+
+	foreach ( $blocks as $block ) {
+		if ( ! is_array( $block ) ) {
+			continue;
+		}
+
+		if ( 'abtest-block/test' === ( $block['blockName'] ?? null ) ) {
+			$attributes = ab_test_block_sanitize_experiment_attributes( $block['attrs'] ?? array() );
+
+			if ( null === $experiment_id || (string) $attributes['experimentId'] === (string) $experiment_id ) {
+				$matches[] = $attributes;
+			}
+		}
+
+		$matches = array_merge(
+			$matches,
+			ab_test_block_collect_experiment_attributes_in_blocks(
+				$block['innerBlocks'] ?? array(),
+				$experiment_id
+			)
+		);
+	}
+
+	return $matches;
+}
+
+function ab_test_block_get_post_experiment_attributes( $post_id, $experiment_id = null, $block_instance_id = null ) {
+	$post = get_post( (int) $post_id );
+
+	if ( ! $post instanceof WP_Post || '' === (string) $post->post_content ) {
+		return null;
+	}
+
+	return ab_test_block_find_experiment_attributes_in_blocks(
+		parse_blocks( $post->post_content ),
+		$experiment_id,
+		$block_instance_id
+	);
+}
+
+function ab_test_block_get_recent_authored_experiment_summary( $experiment_id, $limit = 25 ) {
+	global $wpdb;
+
+	$post_ids = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT ID
+			FROM {$wpdb->posts}
+			WHERE post_content LIKE %s
+				AND post_status NOT IN ( 'auto-draft', 'trash' )
+			ORDER BY post_modified_gmt DESC, ID DESC
+			LIMIT %d",
+			'%' . $wpdb->esc_like( (string) $experiment_id ) . '%',
+			max( 1, min( 100, (int) $limit ) )
+		)
+	);
+
+	$summary = array(
+		'attributes'          => null,
+		'blockInstanceCount'  => 0,
+		'postCount'           => 0,
+		'postId'              => 0,
+		'updatedAt'           => null,
+	);
+
+	foreach ( $post_ids as $post_id ) {
+		$post = get_post( (int) $post_id );
+
+		if ( ! $post instanceof WP_Post || '' === (string) $post->post_content ) {
+			continue;
+		}
+
+		$matches = ab_test_block_collect_experiment_attributes_in_blocks(
+			parse_blocks( $post->post_content ),
+			$experiment_id
+		);
+
+		if ( empty( $matches ) ) {
+			continue;
+		}
+
+		if ( ! is_array( $summary['attributes'] ) ) {
+			$summary['attributes'] = $matches[0];
+			$summary['postId']     = (int) $post_id;
+		}
+
+		$summary['blockInstanceCount'] += count( $matches );
+		$summary['postCount']          += 1;
+
+		$updated_at = ab_test_block_normalize_stats_updated_at( (string) $post->post_modified_gmt );
+		if ( ! empty( $updated_at ) && ( empty( $summary['updatedAt'] ) || $updated_at > $summary['updatedAt'] ) ) {
+			$summary['updatedAt'] = $updated_at;
+		}
+	}
+
+	return $summary['postCount'] > 0 ? $summary : null;
+}
+
+function ab_test_block_find_recent_experiment_attributes( $experiment_id, $limit = 25 ) {
+	$summary = ab_test_block_get_recent_authored_experiment_summary( $experiment_id, $limit );
+
+	if ( ! is_array( $summary ) || ! is_array( $summary['attributes'] ) ) {
+		return null;
+	}
+
+	$attributes           = $summary['attributes'];
+	$attributes['postId'] = (int) $summary['postId'];
+
+	return $attributes;
 }
 
 function ab_test_block_maybe_install_storage() {
@@ -667,10 +826,26 @@ function ab_test_block_get_experiment_stats_summary( $experiment_id, $window_day
 		ARRAY_A
 	);
 
-	return array(
+	$summary = array(
 		'blockInstanceCount' => max( 0, (int) ( $row['block_instance_count'] ?? 0 ) ),
 		'postCount'          => max( 0, (int) ( $row['post_count'] ?? 0 ) ),
 		'updatedAt'          => ab_test_block_normalize_stats_updated_at( $row['updated_at'] ?? null ),
+	);
+
+	if ( $summary['postCount'] > 0 || $summary['blockInstanceCount'] > 0 || ! empty( $summary['updatedAt'] ) ) {
+		return $summary;
+	}
+
+	$authored_summary = ab_test_block_get_recent_authored_experiment_summary( $experiment_id );
+
+	if ( ! is_array( $authored_summary ) ) {
+		return $summary;
+	}
+
+	return array(
+		'blockInstanceCount' => (int) $authored_summary['blockInstanceCount'],
+		'postCount'          => (int) $authored_summary['postCount'],
+		'updatedAt'          => ! empty( $authored_summary['updatedAt'] ) ? (int) $authored_summary['updatedAt'] : null,
 	);
 }
 
@@ -762,6 +937,106 @@ function ab_test_block_get_variant_aggregates( $post_id, $block_instance_id, $va
 	return ab_test_block_get_instance_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days );
 }
 
+function ab_test_block_get_instance_reference_from_stats( $post_id, $block_instance_id ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$row        = $wpdb->get_row(
+		$wpdb->prepare(
+			"SELECT
+				experiment_id,
+				MAX( CASE WHEN variant_key = 'c' THEN 1 ELSE 0 END ) AS has_variant_c
+			FROM {$table_name}
+			WHERE post_id = %d
+				AND block_instance_id = %s
+			GROUP BY experiment_id
+			ORDER BY MAX(updated_at) DESC
+			LIMIT 1",
+			(int) $post_id,
+			(string) $block_instance_id
+		),
+		ARRAY_A
+	);
+
+	if ( ! is_array( $row ) ) {
+		return null;
+	}
+
+	return array(
+		'experimentId' => (string) $row['experiment_id'],
+		'variantCount' => ! empty( $row['has_variant_c'] ) ? 3 : 2,
+	);
+}
+
+function ab_test_block_get_experiment_reference_from_stats( $experiment_id ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$row        = $wpdb->get_row(
+		$wpdb->prepare(
+			"SELECT post_id, block_instance_id
+			FROM {$table_name}
+			WHERE experiment_id = %s
+			ORDER BY updated_at DESC, id DESC
+			LIMIT 1",
+			(string) $experiment_id
+		),
+		ARRAY_A
+	);
+
+	if ( ! is_array( $row ) ) {
+		return null;
+	}
+
+	return array(
+		'blockInstanceId' => (string) $row['block_instance_id'],
+		'postId'          => (int) $row['post_id'],
+	);
+}
+
+function ab_test_block_get_experiment_index( $limit = 20 ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$rows       = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT
+				experiment_id,
+				COUNT(DISTINCT post_id) AS post_count,
+				COUNT(DISTINCT CONCAT(post_id, ':', block_instance_id)) AS block_instance_count,
+				MAX(updated_at) AS updated_at
+			FROM {$table_name}
+			GROUP BY experiment_id
+			ORDER BY MAX(updated_at) DESC
+			LIMIT %d",
+			max( 1, min( 200, (int) $limit ) )
+		),
+		ARRAY_A
+	);
+	$items      = array();
+
+	foreach ( $rows as $row ) {
+		$reference  = ab_test_block_get_experiment_reference_from_stats( $row['experiment_id'] );
+		$attributes = is_array( $reference )
+			? ab_test_block_get_post_experiment_attributes(
+				$reference['postId'],
+				$row['experiment_id'],
+				$reference['blockInstanceId']
+			)
+			: null;
+
+		$items[] = array(
+			'block_instance_count' => max( 0, (int) ( $row['block_instance_count'] ?? 0 ) ),
+			'experiment_id'        => (string) $row['experiment_id'],
+			'experiment_label'     => is_array( $attributes ) ? (string) $attributes['experimentLabel'] : '',
+			'post_count'           => max( 0, (int) ( $row['post_count'] ?? 0 ) ),
+			'updated_at'           => ab_test_block_normalize_stats_updated_at( $row['updated_at'] ?? null ),
+		);
+	}
+
+	return $items;
+}
+
 function ab_test_block_evaluate_winner( $aggregates, $payload ) {
 	$candidates = array_values(
 		array_filter(
@@ -828,10 +1103,306 @@ function ab_test_block_build_reevaluate_response( $state, $aggregates, $stats ) 
 	return $response;
 }
 
+function ab_test_block_cli_print_json( $value ) {
+	if ( ! class_exists( 'WP_CLI' ) ) {
+		return;
+	}
+
+	WP_CLI::line( wp_json_encode( $value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
+}
+
+function ab_test_block_cli_format_timestamp( $value ) {
+	return ! empty( $value ) ? gmdate( 'Y-m-d H:i:s', (int) $value ) . ' UTC' : '';
+}
+
+function ab_test_block_cli_get_instance_context( $post_id, $block_instance_id ) {
+	$attributes = ab_test_block_get_post_experiment_attributes(
+		(int) $post_id,
+		null,
+		(string) $block_instance_id
+	);
+
+	if ( is_array( $attributes ) ) {
+		return $attributes;
+	}
+
+	$reference = ab_test_block_get_instance_reference_from_stats(
+		(int) $post_id,
+		(string) $block_instance_id
+	);
+
+	if ( ! is_array( $reference ) ) {
+		return null;
+	}
+
+	return array(
+		'blockInstanceId'      => (string) $block_instance_id,
+		'evaluationWindowDays' => 14,
+		'experimentId'         => (string) $reference['experimentId'],
+		'experimentLabel'      => '',
+		'variantCount'         => (int) $reference['variantCount'],
+	);
+}
+
+function ab_test_block_cli_get_experiment_context( $experiment_id ) {
+	$reference = ab_test_block_get_experiment_reference_from_stats( $experiment_id );
+
+	if ( ! is_array( $reference ) ) {
+		$authored_summary = ab_test_block_get_recent_authored_experiment_summary( $experiment_id );
+
+		if ( is_array( $authored_summary ) && is_array( $authored_summary['attributes'] ) ) {
+			$attributes           = $authored_summary['attributes'];
+			$attributes['postId'] = (int) $authored_summary['postId'];
+			return $attributes;
+		}
+
+		return null;
+	}
+
+	$attributes = ab_test_block_get_post_experiment_attributes(
+		(int) $reference['postId'],
+		(string) $experiment_id,
+		(string) $reference['blockInstanceId']
+	);
+
+	if ( is_array( $attributes ) ) {
+		$attributes['postId'] = (int) $reference['postId'];
+		return $attributes;
+	}
+
+	return array(
+		'blockInstanceId'      => (string) $reference['blockInstanceId'],
+		'evaluationWindowDays' => 14,
+		'experimentId'         => (string) $experiment_id,
+		'experimentLabel'      => '',
+		'postId'               => (int) $reference['postId'],
+		'variantCount'         => 2,
+	);
+}
+
+if ( class_exists( 'WP_CLI_Command' ) ) {
+	/**
+	 * Read-only operational commands for the A/B Test Block plugin.
+	 */
+	class Ab_Test_Block_CLI_Command extends WP_CLI_Command {
+		/**
+		 * List tracked experiments.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--format=<format>]
+		 * : Output format.
+		 * ---
+		 * default: table
+		 * options:
+		 *   - table
+		 *   - json
+		 * ---
+		 *
+		 * [--limit=<limit>]
+		 * : Maximum number of experiments to show.
+		 * ---
+		 * default: 20
+		 * ---
+		 */
+		public function experiments( $args, $assoc_args ) {
+			$format = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'table';
+			$items  = ab_test_block_get_experiment_index( (int) ( $assoc_args['limit'] ?? 20 ) );
+
+			if ( 'json' === $format ) {
+				ab_test_block_cli_print_json( $items );
+				return;
+			}
+
+			if ( empty( $items ) ) {
+				WP_CLI::log( 'No tracked experiments found.' );
+				return;
+			}
+
+			$rows = array_map(
+				static function( $item ) {
+					return array(
+						'block_instance_count' => (int) $item['block_instance_count'],
+						'experiment_id'        => (string) $item['experiment_id'],
+						'experiment_label'     => (string) $item['experiment_label'],
+						'post_count'           => (int) $item['post_count'],
+						'updated_at'           => ab_test_block_cli_format_timestamp( $item['updated_at'] ),
+					);
+				},
+				$items
+			);
+
+			WP_CLI\Utils\format_items(
+				'table',
+				$rows,
+				array( 'experiment_id', 'experiment_label', 'post_count', 'block_instance_count', 'updated_at' )
+			);
+		}
+
+		/**
+		 * Show stats for one block instance or one shared experiment.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--post=<post-id>]
+		 * : Post ID for a single block instance lookup.
+		 *
+		 * [--block-instance=<block-instance-id>]
+		 * : Block instance ID for a single block instance lookup.
+		 *
+		 * [--experiment=<experiment-id>]
+		 * : Experiment ID for a shared aggregate lookup.
+		 *
+		 * [--format=<format>]
+		 * : Output format.
+		 * ---
+		 * default: table
+		 * options:
+		 *   - table
+		 *   - json
+		 * ---
+		 */
+		public function stats( $args, $assoc_args ) {
+			$format          = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'table';
+			$post_id         = isset( $assoc_args['post'] ) ? (int) $assoc_args['post'] : 0;
+			$block_instance  = isset( $assoc_args['block-instance'] ) ? sanitize_key( (string) $assoc_args['block-instance'] ) : '';
+			$experiment_id   = isset( $assoc_args['experiment'] ) ? sanitize_key( (string) $assoc_args['experiment'] ) : '';
+			$context         = null;
+			$scope           = '';
+
+			if ( $post_id > 0 && '' !== $block_instance ) {
+				$scope   = 'instance';
+				$context = ab_test_block_cli_get_instance_context( $post_id, $block_instance );
+			} elseif ( '' !== $experiment_id ) {
+				$scope   = 'experiment';
+				$context = ab_test_block_cli_get_experiment_context( $experiment_id );
+			} else {
+				WP_CLI::error( 'Provide either --post and --block-instance, or --experiment.' );
+			}
+
+			if ( ! is_array( $context ) ) {
+				WP_CLI::error( 'Could not resolve the requested experiment context.' );
+			}
+
+			$snapshot = ab_test_block_get_stats_snapshot(
+				(int) ( $post_id ?: ( $context['postId'] ?? 0 ) ),
+				(string) ( $block_instance ?: ( $context['blockInstanceId'] ?? '' ) ),
+				(string) $context['experimentId'],
+				(int) $context['variantCount'],
+				(int) $context['evaluationWindowDays']
+			);
+			$target   = 'experiment' === $scope ? $snapshot['experiment'] : $snapshot['instance'];
+
+			if ( 'json' === $format ) {
+				ab_test_block_cli_print_json( $target );
+				return;
+			}
+
+			WP_CLI::log( 'Scope: ' . $scope );
+			WP_CLI::log( 'Experiment ID: ' . (string) $target['experimentId'] );
+			if ( isset( $target['postId'] ) ) {
+				WP_CLI::log( 'Post ID: ' . (int) $target['postId'] );
+			}
+			if ( isset( $target['blockInstanceId'] ) ) {
+				WP_CLI::log( 'Block instance: ' . (string) $target['blockInstanceId'] );
+			}
+			if ( isset( $target['postCount'] ) ) {
+				WP_CLI::log( 'Posts: ' . (int) $target['postCount'] );
+			}
+			if ( isset( $target['blockInstanceCount'] ) ) {
+				WP_CLI::log( 'Block instances: ' . (int) $target['blockInstanceCount'] );
+			}
+			WP_CLI::log( 'Updated: ' . ab_test_block_cli_format_timestamp( $target['updatedAt'] ?? null ) );
+
+			$rows = array_map(
+				static function( $variant ) {
+					return array(
+						'clicks'      => (int) $variant['clicks'],
+						'ctr'         => number_format_i18n( (float) $variant['ctr'] * 100, 1 ) . '%',
+						'impressions' => (int) $variant['impressions'],
+						'variant'     => strtoupper( (string) $variant['variantKey'] ),
+					);
+				},
+				$target['variants']
+			);
+
+			WP_CLI\Utils\format_items( 'table', $rows, array( 'variant', 'impressions', 'clicks', 'ctr' ) );
+		}
+
+		/**
+		 * Show stored winner state for one block instance.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --post=<post-id>
+		 * : Post ID that contains the block instance.
+		 *
+		 * --block-instance=<block-instance-id>
+		 * : Block instance ID to inspect.
+		 *
+		 * [--format=<format>]
+		 * : Output format.
+		 * ---
+		 * default: json
+		 * options:
+		 *   - json
+		 * ---
+		 */
+		public function winner_state( $args, $assoc_args ) {
+			$post_id        = isset( $assoc_args['post'] ) ? (int) $assoc_args['post'] : 0;
+			$block_instance = isset( $assoc_args['block-instance'] ) ? sanitize_key( (string) $assoc_args['block-instance'] ) : '';
+			$format         = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'json';
+
+			if ( $post_id <= 0 || '' === $block_instance ) {
+				WP_CLI::error( 'Provide both --post and --block-instance.' );
+			}
+
+			if ( 'json' !== $format ) {
+				WP_CLI::error( 'winner-state currently supports --format=json only.' );
+			}
+
+			$context = ab_test_block_cli_get_instance_context( $post_id, $block_instance );
+			if ( ! is_array( $context ) ) {
+				WP_CLI::error( 'Could not resolve the requested block instance.' );
+			}
+
+			ab_test_block_cli_print_json(
+				array(
+					'blockInstanceId' => (string) $block_instance,
+					'experimentId'    => (string) $context['experimentId'],
+					'postId'          => (int) $post_id,
+					'state'           => ab_test_block_get_winner_state(
+						$post_id,
+						$block_instance,
+						(int) $context['variantCount'],
+						(int) $context['evaluationWindowDays']
+					),
+				)
+			);
+		}
+	}
+}
+
 function ab_test_block_handle_record_event( WP_REST_Request $request ) {
 	$payload = ab_test_block_validate_and_sanitize_request( $request->get_json_params(), 'record-event-request', 'body' );
 	if ( is_wp_error( $payload ) ) {
 		return $payload;
+	}
+
+	if ( ! ab_test_block_is_tracking_enabled() ) {
+		return rest_ensure_response(
+			ab_test_block_build_record_event_response(
+				$payload,
+				false,
+				ab_test_block_get_stats_snapshot(
+					(int) $payload['postId'],
+					(string) $payload['blockInstanceId'],
+					(string) $payload['experimentId'],
+					(int) $payload['variantCount'],
+					(int) $payload['evaluationWindowDays']
+				)
+			)
+		);
 	}
 
 	if ( ! empty( $payload['preview'] ) ) {
@@ -884,6 +1455,21 @@ function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
 		(int) $payload['variantCount'],
 		(int) $payload['evaluationWindowDays']
 	);
+
+	if ( ! ab_test_block_is_tracking_enabled() ) {
+		$stats = ab_test_block_get_stats_snapshot(
+			(int) $payload['postId'],
+			(string) $payload['blockInstanceId'],
+			(string) $payload['experimentId'],
+			(int) $payload['variantCount'],
+			(int) $payload['evaluationWindowDays'],
+			$aggregates
+		);
+
+		return rest_ensure_response(
+			ab_test_block_build_reevaluate_response( $existing_state, $aggregates, $stats )
+		);
+	}
 
 	if (
 		! empty( $payload['lockWinnerAfterSelection'] ) &&
@@ -1018,8 +1604,20 @@ function ab_test_block_register_blocks() {
 	}
 }
 
+function ab_test_block_register_cli_commands() {
+	if ( ! class_exists( 'WP_CLI' ) || ! class_exists( 'Ab_Test_Block_CLI_Command' ) ) {
+		return;
+	}
+
+	$command = new Ab_Test_Block_CLI_Command();
+
+	WP_CLI::add_command( 'abtest-block', $command );
+	WP_CLI::add_command( 'abtest-block winner-state', array( $command, 'winner_state' ) );
+}
+
 register_activation_hook( __FILE__, 'ab_test_block_maybe_install_storage' );
 add_action( 'init', 'ab_test_block_ensure_storage_installed' );
 add_action( 'init', 'ab_test_block_register_meta' );
 add_action( 'init', 'ab_test_block_register_blocks' );
 add_action( 'rest_api_init', 'ab_test_block_register_routes' );
+add_action( 'cli_init', 'ab_test_block_register_cli_commands' );

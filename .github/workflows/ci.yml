@@ -229,3 +229,113 @@ jobs:
                   name: ab-test-block-zip
                   path: ab-test-block.zip
                   retention-days: 7
+
+    zip-install-smoke:
+        name: Release Zip Smoke
+        runs-on: ubuntu-latest
+        needs: validate
+        timeout-minutes: 20
+        env:
+            WP_ENV_HOME: ${{ runner.temp }}/wp-env-zip
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+
+            - name: Cache Bun install cache
+              uses: actions/cache@v5
+              with:
+                  path: ~/.bun/install/cache
+                  key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+                  restore-keys: |
+                      bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Build release zip
+              run: bun run plugin-zip
+
+            - name: Prepare zip smoke config
+              run: |
+                  cat <<'EOF' > .wp-env.override.json
+                  {
+                    "plugins": [],
+                    "port": 8892,
+                    "testsPort": 8893,
+                    "mappings": {
+                      "wp-content/plugins-src/ab-test-block": "."
+                    }
+                  }
+                  EOF
+
+            - name: Start clean WordPress
+              run: |
+                  bun run env:stop || true
+                  bun run env:start
+
+            - name: Install zip and verify render
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  if ! ./node_modules/.bin/wp-env run cli wp core is-installed; then
+                    ./node_modules/.bin/wp-env run cli wp core install \
+                      --url=http://localhost:8892 \
+                      --title="A/B Test Block Zip Smoke" \
+                      --admin_user=admin \
+                      --admin_password=password \
+                      --admin_email=admin@example.com
+                  fi
+
+                  ./node_modules/.bin/wp-env run cli wp plugin install \
+                    /var/www/html/wp-content/plugins-src/ab-test-block/ab-test-block.zip \
+                    --force \
+                    --activate
+                  ./node_modules/.bin/wp-env run cli wp plugin is-active ab-test-block
+
+                  routes="$(
+                    ./node_modules/.bin/wp-env run cli wp eval \
+                      'echo implode(PHP_EOL, array_keys( rest_get_server()->get_routes() ));'
+                  )"
+                  grep -qx '/abtest-block/v1/event' <<< "${routes}"
+                  grep -qx '/abtest-block/v1/reevaluate' <<< "${routes}"
+                  grep -qx '/abtest-block/v1/stats' <<< "${routes}"
+
+                  content="$(cat <<'HTML'
+                  <!-- wp:abtest-block/test {"automaticMetric":"ctr","blockInstanceId":"zipsmoke01","emitBrowserEvents":true,"emitClarityHook":false,"emitDataLayer":false,"emitKexpLayer":false,"evaluationWindowDays":14,"experimentId":"zip_smoke_fixture","experimentLabel":"Zip Smoke Fixture","lockWinnerAfterSelection":true,"minimumClicksPerVariant":1,"minimumImpressionsPerVariant":100,"previewQueryKey":"ab_zip_smoke_fixture","stickyAssignment":true,"stickyScope":"instance","trackClicks":true,"trackImpressions":true,"variantCount":2,"weights":{"a":50,"b":50},"winnerMode":"off"} -->
+                  <!-- wp:abtest-block/variant {"variantKey":"a","variantLabel":"Variant A"} --><div class="wp-block-abtest-block-variant" data-abtest-variant="a" data-variant-label="Variant A"><!-- wp:paragraph --><p>Zip smoke Variant A body</p><!-- /wp:paragraph --></div><!-- /wp:abtest-block/variant -->
+                  <!-- wp:abtest-block/variant {"variantKey":"b","variantLabel":"Variant B"} --><div class="wp-block-abtest-block-variant" data-abtest-variant="b" data-variant-label="Variant B"><!-- wp:paragraph --><p>Zip smoke Variant B body</p><!-- /wp:paragraph --></div><!-- /wp:abtest-block/variant -->
+                  <!-- /wp:abtest-block/test -->
+                  HTML
+                  )"
+
+                  post_id="$(
+                    ./node_modules/.bin/wp-env run cli wp post create \
+                      --post_title='ZIP Smoke Fixture' \
+                      --post_content="$content" \
+                      --post_status=publish \
+                      --porcelain
+                  )"
+
+                  html="$(curl --fail --silent --show-error "http://localhost:8892/?p=${post_id}")"
+                  grep -q 'data-wp-interactive="abtest-block"' <<< "${html}"
+                  grep -q 'wp-block-abtest-block-variant' <<< "${html}"
+
+            - name: Stop clean WordPress
+              if: always()
+              continue-on-error: true
+              run: bun run env:stop
+
+            - name: Remove zip smoke override
+              if: always()
+              run: rm -f .wp-env.override.json
