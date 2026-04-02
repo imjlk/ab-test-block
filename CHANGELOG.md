@@ -1,5 +1,15 @@
 # ab-test-block
 
+## 0.3.1 — 2026-04-02
+
+### Patch changes
+
+- [d83acac](https://github.com/imjlk/ab-test-block/commit/d83acac129b7347ca17c30d113b0c3dc078925a8) Improves the editor-side operating experience for A/B test experiments.
+  
+  - refines the Debug panel into clearer current-state and stats sections
+  - documents the split core/editor/full smoke test modes for contributors
+  - adds a Copy ID action for the advanced Experiment ID field without unlocking editing — Thanks @imjlk!
+
 ## 0.3.0 — 2026-04-02
 
 ### Minor changes
