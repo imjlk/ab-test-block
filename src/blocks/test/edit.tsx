@@ -20,7 +20,7 @@ import {
 	ToggleControl,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
-import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
+import { useEffect, useMemo, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { fetchStats } from '../../api';
@@ -133,89 +133,86 @@ export default function Edit( {
 	const [ showWinnerState, setShowWinnerState ] = useState( true );
 	const [ enableQueryPreviewHints, setEnableQueryPreviewHints ] =
 		useState( true );
+	const [ isEditingExperimentId, setIsEditingExperimentId ] =
+		useState( false );
 	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
 	const [ isStatsLoading, setIsStatsLoading ] = useState( false );
 	const [ statsError, setStatsError ] = useState< string | undefined >();
 	const [ statsRefreshToken, setStatsRefreshToken ] = useState( 0 );
-	const pendingFocusVariantKeyRef = useRef< VariantKey | undefined >();
 	const normalizedAttributes = useMemo(
 		() => sanitizeParentAttributes( attributes ),
 		[ attributes ]
 	);
-	const {
-		innerBlocks,
-		postId,
-		selectedBlockClientId,
-		selectedVariantKey,
-		storedWinnerEvaluation,
-	} = useSelect(
-		( select: any ) => {
-			const editor = select( blockEditorStore );
-			const blocks =
-				( editor.getBlocks( clientId ) as BlockRecord[] ) || [];
-			const postEditor = select( 'core/editor' );
-			const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
-				{} ) as Record< string, unknown >;
-			const nextPostId = Number(
-				postEditor?.getCurrentPostId?.() ??
-					postEditor?.getEditedPostAttribute?.( 'id' ) ??
-					0
-			);
-			const winnerStateMap = meta._ab_test_block_winner_state as
-				| Record< string, unknown >
-				| undefined;
-			const nextSelectedBlockClientId =
-				editor.getSelectedBlockClientId() as string | undefined;
-			let nextSelectedVariantKey: VariantKey | undefined;
+	const { innerBlocks, postId, selectedVariantKey, storedWinnerEvaluation } =
+		useSelect(
+			( select: any ) => {
+				const editor = select( blockEditorStore );
+				const blocks =
+					( editor.getBlocks( clientId ) as BlockRecord[] ) || [];
+				const postEditor = select( 'core/editor' );
+				const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
+					{} ) as Record< string, unknown >;
+				const nextPostId = Number(
+					postEditor?.getCurrentPostId?.() ??
+						postEditor?.getEditedPostAttribute?.( 'id' ) ??
+						0
+				);
+				const winnerStateMap = meta._ab_test_block_winner_state as
+					| Record< string, unknown >
+					| undefined;
+				const nextSelectedBlockClientId =
+					editor.getSelectedBlockClientId() as string | undefined;
+				let nextSelectedVariantKey: VariantKey | undefined;
 
-			for ( const block of blocks ) {
-				const variantKey = block.attributes.variantKey;
+				for ( const block of blocks ) {
+					const variantKey = block.attributes.variantKey;
 
-				if ( ! isVariantKeyValue( variantKey ) ) {
-					continue;
+					if ( ! isVariantKeyValue( variantKey ) ) {
+						continue;
+					}
+
+					if (
+						block.clientId === nextSelectedBlockClientId ||
+						editor.hasSelectedInnerBlock( block.clientId, true )
+					) {
+						nextSelectedVariantKey = variantKey;
+						break;
+					}
 				}
 
-				if (
-					block.clientId === nextSelectedBlockClientId ||
-					editor.hasSelectedInnerBlock( block.clientId, true )
-				) {
-					nextSelectedVariantKey = variantKey;
-					break;
-				}
-			}
-
-			return {
-				innerBlocks: blocks,
-				postId: Number.isNaN( nextPostId ) ? 0 : nextPostId,
-				selectedBlockClientId: nextSelectedBlockClientId,
-				selectedVariantKey: nextSelectedVariantKey,
-				storedWinnerEvaluation: sanitizeWinnerSnapshot(
-					winnerStateMap?.[ normalizedAttributes.blockInstanceId ] as
-						| Partial< AbTestWinnerEvaluationSnapshot >
-						| undefined,
-					normalizedAttributes.variantCount
-				),
-			};
-		},
-		[
-			clientId,
-			normalizedAttributes.blockInstanceId,
-			normalizedAttributes.variantCount,
-		]
-	);
-	const { replaceInnerBlocks, selectBlock, updateBlockAttributes } =
-		useDispatch( blockEditorStore as never ) as {
-			replaceInnerBlocks: (
-				rootClientId: string,
-				blocks: BlockRecord[],
-				updateSelection?: boolean
-			) => void;
-			selectBlock: ( targetClientId?: string ) => void;
-			updateBlockAttributes: (
-				targetClientId: string,
-				attributes: Record< string, unknown >
-			) => void;
-		};
+				return {
+					innerBlocks: blocks,
+					postId: Number.isNaN( nextPostId ) ? 0 : nextPostId,
+					selectedVariantKey: nextSelectedVariantKey,
+					storedWinnerEvaluation: sanitizeWinnerSnapshot(
+						winnerStateMap?.[
+							normalizedAttributes.blockInstanceId
+						] as
+							| Partial< AbTestWinnerEvaluationSnapshot >
+							| undefined,
+						normalizedAttributes.variantCount
+					),
+				};
+			},
+			[
+				clientId,
+				normalizedAttributes.blockInstanceId,
+				normalizedAttributes.variantCount,
+			]
+		);
+	const { replaceInnerBlocks, updateBlockAttributes } = useDispatch(
+		blockEditorStore as never
+	) as {
+		replaceInnerBlocks: (
+			rootClientId: string,
+			blocks: BlockRecord[],
+			updateSelection?: boolean
+		) => void;
+		updateBlockAttributes: (
+			targetClientId: string,
+			attributes: Record< string, unknown >
+		) => void;
+	};
 	const { clearUi, setUi } = useDispatch( editorUiStore as never ) as {
 		clearUi: ( parentClientId: string ) => void;
 		setUi: (
@@ -416,31 +413,11 @@ export default function Edit( {
 				updateBlockAttributes( block.clientId, nextBlockAttributes );
 			}
 		} );
-
-		const pendingFocusVariantKey = pendingFocusVariantKeyRef.current;
-		if ( pendingFocusVariantKey ) {
-			const focusTarget = desiredBlocks.find(
-				( block ) =>
-					block.attributes.variantKey === pendingFocusVariantKey
-			);
-
-			if ( focusTarget?.clientId ) {
-				selectBlock( focusTarget.clientId );
-				pendingFocusVariantKeyRef.current = undefined;
-				return;
-			}
-		}
-
-		if ( ! selectedBlockClientId && desiredBlocks[ 0 ]?.clientId ) {
-			selectBlock( desiredBlocks[ 0 ].clientId );
-		}
 	}, [
 		clientId,
 		innerBlockByVariant,
 		innerBlocks,
 		replaceInnerBlocks,
-		selectBlock,
-		selectedBlockClientId,
 		updateBlockAttributes,
 		variantKeys,
 	] );
@@ -569,22 +546,9 @@ export default function Edit( {
 		);
 	}
 
-	function focusVariant( variantKey: VariantKey ) {
-		const targetBlock = innerBlockByVariant.get( variantKey );
-
-		if ( targetBlock?.clientId ) {
-			selectBlock( targetBlock.clientId );
-			pendingFocusVariantKeyRef.current = undefined;
-			return;
-		}
-
-		pendingFocusVariantKeyRef.current = variantKey;
-	}
-
 	function activateVariantEditor( variantKey: VariantKey ) {
 		setPreviewMode( 'traffic' );
 		setLastTrafficVariantKey( variantKey );
-		focusVariant( variantKey );
 	}
 
 	function setVariantCount(
@@ -618,7 +582,6 @@ export default function Edit( {
 			nextAttributes.manualWinner = nextVariantKeys[ 0 ];
 		}
 
-		pendingFocusVariantKeyRef.current = nextTrafficVariantKey;
 		setPreviewMode( 'traffic' );
 		setLastTrafficVariantKey( nextTrafficVariantKey );
 		setAttributes( nextAttributes );
@@ -626,14 +589,10 @@ export default function Edit( {
 
 	function previewTrafficMode() {
 		setPreviewMode( 'traffic' );
-		focusVariant( lastTrafficVariantKey );
 	}
 
 	function previewWinnerMode() {
 		setPreviewMode( 'winner' );
-		if ( winnerPreviewState.variant ) {
-			focusVariant( winnerPreviewState.variant );
-		}
 	}
 
 	const validationState = useMemo(
@@ -931,9 +890,24 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					/>
+					<div className="wp-block-abtest-block-test__field-actions">
+						<Button
+							variant="secondary"
+							onClick={ () =>
+								setIsEditingExperimentId(
+									( current ) => ! current
+								)
+							}
+						>
+							{ isEditingExperimentId
+								? __( 'Done editing ID', 'ab-test-block' )
+								: __( 'Edit Experiment ID', 'ab-test-block' ) }
+						</Button>
+					</div>
 					<TextControl
 						label={ __( 'Experiment ID', 'ab-test-block' ) }
 						value={ normalizedAttributes.experimentId }
+						disabled={ ! isEditingExperimentId }
 						onChange={ ( value ) =>
 							updateAttribute( 'experimentId', value )
 						}
@@ -942,6 +916,14 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					/>
+					{ isEditingExperimentId && (
+						<Notice status="warning" isDismissible={ false }>
+							{ __(
+								'Changing the Experiment ID after stats exist will split future tracking into a new experiment history. Only change it when you intentionally want a different grouping key.',
+								'ab-test-block'
+							) }
+						</Notice>
+					) }
 					<SelectControl
 						label={ __( 'Variant count', 'ab-test-block' ) }
 						value={
@@ -1369,26 +1351,6 @@ export default function Edit( {
 					className: 'wp-block-abtest-block-test',
 				} ) }
 			>
-				<div className="wp-block-abtest-block-test__workspace">
-					<div className="wp-block-abtest-block-test__tabs">
-						{ variantKeys.map( ( variantKey ) => (
-							<Button
-								key={ variantKey }
-								className="wp-block-abtest-block-test__tab"
-								variant={
-									activePreviewVariantKey === variantKey
-										? 'primary'
-										: 'secondary'
-								}
-								onClick={ () =>
-									activateVariantEditor( variantKey )
-								}
-							>
-								{ variantKey.toUpperCase() }
-							</Button>
-						) ) }
-					</div>
-				</div>
 				<div className="wp-block-abtest-block-test__inline-notices">
 					{ previewMode === 'winner' &&
 						! winnerPreviewState.variant && (

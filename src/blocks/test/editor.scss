@@ -1,8 +1,7 @@
 .wp-block-abtest-block-test {
-	border: 1px solid #d9d4c8;
-	border-radius: 16px;
-	padding: 16px;
-	background: rgba(250, 247, 239, 0.82);
+	padding: 0;
+	border: 0;
+	background: transparent;
 
 	&__debug {
 		margin: 8px 0 0;
@@ -75,66 +74,10 @@
 		color: #5c5441;
 	}
 
-	&__workspace {
-		margin: 0 0 12px;
-	}
-
-	&__tabs {
-		display: inline-flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		justify-content: center;
-		margin: 0;
-		padding: 6px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.78);
-		border: 1px solid rgba(28, 102, 145, 0.14);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-	}
-
-	&__tab {
-
-		&.components-button {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			min-width: 44px;
-			height: 40px;
-			padding-inline: 14px;
-			border-radius: 999px;
-			font-size: 15px;
-			font-weight: 500;
-			line-height: 1;
-			box-shadow: none;
-			transition:
-				background-color 120ms ease,
-				border-color 120ms ease,
-				color 120ms ease;
-		}
-
-		&.components-button.is-primary {
-			background: #1b7fb8;
-			border: 1px solid #1b7fb8;
-			color: #fff;
-		}
-
-		&.components-button.is-secondary {
-			background: transparent;
-			border: 1px solid rgba(27, 127, 184, 0.48);
-			color: #1b7fb8;
-		}
-
-		&.components-button.is-secondary:hover {
-			background: rgba(27, 127, 184, 0.08);
-			border-color: rgba(27, 127, 184, 0.62);
-			color: #166a99;
-		}
-	}
-
 	&__inline-notices {
 		display: grid;
 		gap: 6px;
-		margin: 0 0 12px;
+		margin: 0 0 10px;
 	}
 
 	&__inline-notice.components-notice {
@@ -151,11 +94,10 @@
 	}
 
 	&__stage {
-		padding: 18px;
-		border-radius: 16px;
-		background: rgba(255, 255, 255, 0.86);
-		border: 1px solid rgba(112, 82, 18, 0.14);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+		padding: 0;
+		background: transparent;
+		border: 0;
+		box-shadow: none;
 	}
 
 	&__toolbar-dropdown-content {
@@ -213,5 +155,11 @@
 		gap: 8px;
 		flex-wrap: wrap;
 		margin-bottom: 12px;
+	}
+
+	&__field-actions {
+		display: flex;
+		justify-content: flex-start;
+		margin: 0 0 10px;
 	}
 }

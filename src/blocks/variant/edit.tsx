@@ -32,15 +32,10 @@ export default function Edit( {
 			const blockSelected =
 				editor.isBlockSelected( clientId ) ||
 				editor.hasSelectedInnerBlock( clientId, true );
-			const parentSelected = parentClientId
-				? editor.isBlockSelected( parentClientId )
-				: false;
 
 			return {
 				isActive:
-					blockSelected ||
-					( parentSelected &&
-						uiState.visibleVariantKey === variantKey ),
+					blockSelected || uiState.visibleVariantKey === variantKey,
 				isSelected: blockSelected,
 			};
 		},
