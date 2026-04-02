@@ -890,6 +890,29 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					/>
+					<SelectControl
+						label={ __( 'Variant count', 'ab-test-block' ) }
+						value={
+							String( normalizedAttributes.variantCount ) as
+								| '2'
+								| '3'
+						}
+						options={ [
+							{ label: __( 'A/B', 'ab-test-block' ), value: '2' },
+							{
+								label: __( 'A/B/C', 'ab-test-block' ),
+								value: '3',
+							},
+						] }
+						onChange={ ( value ) =>
+							setVariantCount( value === '3' ? 3 : 2 )
+						}
+					/>
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Advanced', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
 					<div className="wp-block-abtest-block-test__field-actions">
 						<Button
 							variant="secondary"
@@ -924,24 +947,6 @@ export default function Edit( {
 							) }
 						</Notice>
 					) }
-					<SelectControl
-						label={ __( 'Variant count', 'ab-test-block' ) }
-						value={
-							String( normalizedAttributes.variantCount ) as
-								| '2'
-								| '3'
-						}
-						options={ [
-							{ label: __( 'A/B', 'ab-test-block' ), value: '2' },
-							{
-								label: __( 'A/B/C', 'ab-test-block' ),
-								value: '3',
-							},
-						] }
-						onChange={ ( value ) =>
-							setVariantCount( value === '3' ? 3 : 2 )
-						}
-					/>
 					<TextControl
 						label={ __( 'Preview query key', 'ab-test-block' ) }
 						value={ normalizedAttributes.previewQueryKey }

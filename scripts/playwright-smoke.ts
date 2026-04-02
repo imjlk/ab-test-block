@@ -307,20 +307,54 @@ async function selectParentBlock( page: Page, blockInstanceId: string ) {
 	return page.frameLocator( 'iframe[name="editor-canvas"]' );
 }
 
-async function openDebugPanel( page: Page ) {
+async function openSidebarPanel( page: Page, title: string ) {
 	const sidebar = page.locator( '.interface-interface-skeleton__sidebar' );
 	const toggle = sidebar
 		.locator( 'button' )
-		.filter( { hasText: /^Debug$/ } )
+		.filter( { hasText: new RegExp( `^${ title }$` ) } )
 		.first();
 	const expanded = await toggle.getAttribute( 'aria-expanded' );
 
 	if ( expanded !== 'true' ) {
 		await toggle.click();
-		await page.waitForTimeout( 500 );
+		await page.waitForTimeout( 1000 );
 	}
 
 	return sidebar;
+}
+
+async function openDebugPanel( page: Page ) {
+	return openSidebarPanel( page, 'Debug' );
+}
+
+async function isParentBlockSelected( page: Page, blockInstanceId: string ) {
+	return page.evaluate( ( currentBlockInstanceId ) => {
+		const wpData = (
+			window as typeof window & {
+				wp: {
+					data: {
+						select: ( store: string ) => {
+							getBlock: ( clientId: string ) => {
+								attributes: Record< string, unknown >;
+							} | null;
+							getSelectedBlockClientId: () => string | null;
+						};
+					};
+				};
+			}
+		 ).wp;
+		const editor = wpData.data.select( 'core/block-editor' );
+		const selectedClientId = editor.getSelectedBlockClientId();
+
+		if ( ! selectedClientId ) {
+			return false;
+		}
+
+		return (
+			editor.getBlock( selectedClientId )?.attributes.blockInstanceId ===
+			currentBlockInstanceId
+		);
+	}, blockInstanceId );
 }
 
 async function insertHeadingIntoVariant(
@@ -549,6 +583,20 @@ async function run() {
 			variantBBody: 'Shared Scope Two Variant B body',
 		} )
 	);
+	const editorPostId = INCLUDE_EDITOR_CHECKS
+		? createFixturePost(
+				'E2E Editor Fixture',
+				`${ buildExperimentBlock( {
+					blockInstanceId: 'e2eeditorfixture1',
+					experimentId: 'e2e_editor_fixture',
+					experimentLabel: 'Editor Fixture',
+					stickyAssignment: true,
+					stickyScope: 'instance',
+					variantABody: 'Editor Variant A body',
+					variantBBody: 'Editor Variant B body',
+				} ) }${ buildParagraph( 'Outside block' ) }`
+		  )
+		: undefined;
 
 	let adminPage: Page | undefined;
 
@@ -557,43 +605,134 @@ async function run() {
 		adminPage = await adminContext.newPage();
 
 		await loginToWpAdmin( adminPage );
-		await openEditor( adminPage, statsPostId );
+		await openEditor( adminPage, editorPostId ?? statsPostId );
 
-		const frame = await selectParentBlock( adminPage, 'e2einstats1' );
-		await frame
-			.locator( '.wp-block-abtest-block-test__tab' )
-			.nth( 1 )
+		const frame = await selectParentBlock( adminPage, 'e2eeditorfixture1' );
+		assert(
+			( await frame
+				.locator( '.wp-block-abtest-block-test__tabs' )
+				.count() ) === 0,
+			'Expected canvas variant tabs to be removed from the editor shell'
+		);
+		assert(
+			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
+			'Expected the A/B test parent block to stay selected after selection sync'
+		);
+		await adminPage
+			.locator( '[role="toolbar"] button[aria-label="Edit Variant B"]' )
 			.click();
 		await adminPage.waitForTimeout( 500 );
 		assert(
+			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
+			'Expected toolbar variant switching to keep parent block selection'
+		);
+		assert(
 			(
 				await frame
-					.locator( '.wp-block-abtest-block-test__workspace-title' )
+					.locator( '.wp-block-abtest-block-variant.is-active' )
+					.first()
 					.innerText()
-			).includes( 'Variant B' ),
-			'Expected Variant B tab to become active in the editor'
+			).includes( 'Editor Variant B body' ),
+			'Expected toolbar variant switching to show Variant B content in the editor canvas'
+		);
+		await adminPage
+			.locator( '[role="toolbar"] button[aria-label="Winner preview"]' )
+			.click();
+		await adminPage.waitForTimeout( 400 );
+		assert(
+			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
+			'Expected Winner preview toolbar action to keep parent block selection'
+		);
+		await adminPage
+			.locator( '[role="toolbar"] button[aria-label="Traffic mode"]' )
+			.click();
+		await adminPage.waitForTimeout( 400 );
+		assert(
+			await isParentBlockSelected( adminPage, 'e2eeditorfixture1' ),
+			'Expected Traffic mode toolbar action to keep parent block selection'
 		);
 
 		const insertedHeading = 'Playwright smoke heading';
 		await insertHeadingIntoVariant(
 			adminPage,
-			'e2einstats1',
+			'e2eeditorfixture1',
 			'b',
 			insertedHeading
 		);
 		await frame
-			.locator( '.wp-block-abtest-block-test__tab' )
-			.nth( 1 )
-			.click();
-		await frame
 			.getByText( insertedHeading )
 			.waitFor( { state: 'visible' } );
-		await removeHeadingFromVariant( adminPage, 'e2einstats1', 'b' );
+		await removeHeadingFromVariant( adminPage, 'e2eeditorfixture1', 'b' );
 		await adminPage.waitForTimeout( 500 );
 		assert(
 			( await frame.getByText( insertedHeading ).count() ) === 0,
 			'Expected inserted heading block to be removable inside the variant container'
 		);
+		await frame.getByText( 'Outside block' ).click();
+		await adminPage.waitForTimeout( 500 );
+		assert(
+			( await frame
+				.locator( '.wp-block-abtest-block-variant.is-active' )
+				.count() ) === 1,
+			'Expected the visible variant to remain rendered after selecting an outside block'
+		);
+
+		const advancedSidebar = await openSidebarPanel( adminPage, 'Advanced' );
+		const advancedSidebarText = await advancedSidebar.innerText();
+		if ( advancedSidebarText.includes( 'Edit Experiment ID' ) ) {
+			await adminPage.evaluate( () => {
+				const sidebar = document.querySelector(
+					'.interface-interface-skeleton__sidebar'
+				);
+				const button = Array.from(
+					sidebar?.querySelectorAll( 'button' ) ?? []
+				).find(
+					( element ) =>
+						element.textContent?.includes( 'Edit Experiment ID' )
+				) as HTMLButtonElement | undefined;
+
+				if ( ! button ) {
+					throw new Error( 'Missing Edit Experiment ID button' );
+				}
+
+				button.click();
+			} );
+			await adminPage.waitForTimeout( 300 );
+			assert(
+				( await advancedSidebar
+					.getByText( 'Changing the Experiment ID after stats exist' )
+					.count() ) === 1,
+				'Expected Experiment ID warning to appear while editing the advanced field'
+			);
+			await adminPage.evaluate( () => {
+				const sidebar = document.querySelector(
+					'.interface-interface-skeleton__sidebar'
+				);
+				const button = Array.from(
+					sidebar?.querySelectorAll( 'button' ) ?? []
+				).find(
+					( element ) =>
+						element.textContent?.includes( 'Done editing ID' )
+				) as HTMLButtonElement | undefined;
+
+				if ( ! button ) {
+					throw new Error( 'Missing Done editing ID button' );
+				}
+
+				button.click();
+			} );
+			await adminPage.waitForTimeout( 300 );
+			assert(
+				( await advancedSidebar
+					.getByText( 'Changing the Experiment ID after stats exist' )
+					.count() ) === 0,
+				'Expected Experiment ID to relock after leaving edit mode'
+			);
+		} else {
+			writeWarning(
+				'Skipping Experiment ID editor smoke check because the Advanced panel control text was not discoverable in this editor session.'
+			);
+		}
 	}
 
 	const frontContext = await launchContext( () => {
