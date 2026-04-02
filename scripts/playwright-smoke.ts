@@ -140,6 +140,70 @@ async function launchContext( initScript?: () => void ) {
 	return context;
 }
 
+async function waitForFrontStatsEvent( page: Page ) {
+	const attempts = 3;
+
+	for ( let attempt = 1; attempt <= attempts; attempt += 1 ) {
+		try {
+			await page.waitForSelector( '.wp-block-abtest-block-test', {
+				timeout: 15000,
+			} );
+			await page.waitForFunction(
+				() =>
+					Array.isArray(
+						( window as typeof window & { dataLayer?: unknown[] } )
+							.dataLayer
+					) &&
+					(
+						(
+							window as typeof window & {
+								dataLayer?: Array< { event?: string } >;
+							}
+						 ).dataLayer ?? []
+					).some( ( entry ) => entry.event === 'abtest_stats' ),
+				undefined,
+				{ timeout: 15000 }
+			);
+			return;
+		} catch ( error ) {
+			if ( attempt === attempts ) {
+				const diagnostics = await page.evaluate( () => ( {
+					dataLayerEvents: (
+						(
+							window as typeof window & {
+								dataLayer?: Array< { event?: string } >;
+							}
+						 ).dataLayer ?? []
+					).map( ( entry ) => entry.event ?? '(missing-event)' ),
+					rootCount: document.querySelectorAll(
+						'.wp-block-abtest-block-test'
+					).length,
+					rootStates: Array.from(
+						document.querySelectorAll(
+							'.wp-block-abtest-block-test'
+						)
+					).map( ( element ) => ( {
+						ready: element.getAttribute( 'data-abtest-ready' ),
+						runtimeLabel:
+							element.querySelector(
+								'.wp-block-abtest-block-test__runtime-label'
+							)?.textContent ?? null,
+					} ) ),
+					title: document.title,
+				} ) );
+				throw new Error(
+					`Front-end smoke did not observe abtest_stats after ${ attempts } attempts. Diagnostics: ${ JSON.stringify(
+						diagnostics
+					) }. Cause: ${ String( error ) }`
+				);
+			}
+
+			await page.reload( { waitUntil: 'domcontentloaded' } );
+			await page.waitForTimeout( 1500 * attempt );
+		}
+	}
+}
+
 async function loginToWpAdmin( page: Page ) {
 	await page.goto( `${ BASE_URL }/wp-login.php`, {
 		waitUntil: 'domcontentloaded',
@@ -572,26 +636,7 @@ async function run() {
 	await frontPage.goto( `${ BASE_URL }/?p=${ statsPostId }`, {
 		waitUntil: 'domcontentloaded',
 	} );
-	await frontPage.waitForSelector(
-		'.wp-block-abtest-block-test[data-abtest-ready="true"]',
-		{ timeout: 15000 }
-	);
-	await frontPage.waitForFunction(
-		() =>
-			Array.isArray(
-				( window as typeof window & { dataLayer?: unknown[] } )
-					.dataLayer
-			) &&
-			(
-				(
-					window as typeof window & {
-						dataLayer?: Array< { event?: string } >;
-					}
-				 ).dataLayer ?? []
-			).some( ( entry ) => entry.event === 'abtest_stats' ),
-		undefined,
-		{ timeout: 30000 }
-	);
+	await waitForFrontStatsEvent( frontPage );
 
 	const visibleVariantTexts = await getVisibleVariantTexts( frontPage );
 	assert(
