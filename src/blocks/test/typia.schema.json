@@ -8,6 +8,12 @@
 			"minLength": 1,
 			"maxLength": 191
 		},
+		"experimentLabel": {
+			"default": "Experiment",
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 120
+		},
 		"variantCount": {
 			"enum": [
 				2,
@@ -50,6 +56,14 @@
 		"stickyAssignment": {
 			"default": true,
 			"type": "boolean"
+		},
+		"stickyScope": {
+			"enum": [
+				"instance",
+				"experiment"
+			],
+			"default": "instance",
+			"type": "string"
 		},
 		"winnerMode": {
 			"enum": [
@@ -130,10 +144,12 @@
 	},
 	"required": [
 		"experimentId",
+		"experimentLabel",
 		"variantCount",
 		"weights",
 		"previewQueryKey",
 		"stickyAssignment",
+		"stickyScope",
 		"winnerMode",
 		"automaticMetric",
 		"minimumImpressionsPerVariant",

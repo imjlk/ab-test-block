@@ -5,6 +5,7 @@ export type VariantCount = 2 | 3;
 export type WinnerMode = 'off' | 'manual' | 'automatic';
 export type AutomaticMetric = 'ctr';
 export type EventType = 'impression' | 'click';
+export type StickyScope = 'instance' | 'experiment';
 export type AssignmentSource =
 	| 'query-preview'
 	| 'locked-winner'
@@ -18,7 +19,8 @@ export type BrowserLayerEventName =
 	| 'abtest:impression'
 	| 'abtest:click'
 	| 'abtest:winner_applied'
-	| 'abtest:winner_changed';
+	| 'abtest:winner_changed'
+	| 'abtest:stats';
 
 export interface AbTestTrafficWeights {
 	a: number & tags.Minimum< 0 > & tags.Maximum< 100 >;
@@ -31,6 +33,10 @@ export interface AbTestExperimentAttributes {
 		tags.MinLength< 1 > &
 		tags.MaxLength< 191 > &
 		tags.Default< 'experiment' >;
+	experimentLabel: string &
+		tags.MinLength< 1 > &
+		tags.MaxLength< 120 > &
+		tags.Default< 'Experiment' >;
 	variantCount: VariantCount & tags.Default< 2 >;
 	weights: AbTestTrafficWeights;
 	previewQueryKey: string &
@@ -38,6 +44,7 @@ export interface AbTestExperimentAttributes {
 		tags.MaxLength< 50 > &
 		tags.Default< 'abtest' >;
 	stickyAssignment: boolean & tags.Default< true >;
+	stickyScope: StickyScope & tags.Default< 'instance' >;
 	winnerMode: WinnerMode & tags.Default< 'off' >;
 	manualWinner?: VariantKey;
 	automaticMetric: AutomaticMetric & tags.Default< 'ctr' >;
@@ -92,6 +99,22 @@ export interface AbTestWinnerEvaluationSnapshot {
 	variants: AbTestVariantStatsSnapshot[];
 }
 
+export interface AbTestStatsScopeSnapshot {
+	experimentId: string & tags.MinLength< 1 > & tags.MaxLength< 191 >;
+	variantCount: VariantCount;
+	variants: AbTestVariantStatsSnapshot[];
+	postId?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	blockInstanceId?: string & tags.MinLength< 8 > & tags.MaxLength< 64 >;
+	postCount?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	blockInstanceCount?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+	updatedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
+}
+
+export interface AbTestStatsResponse {
+	instance: AbTestStatsScopeSnapshot;
+	experiment: AbTestStatsScopeSnapshot;
+}
+
 export interface AbTestRuntimeConfiguration {
 	postId: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
 	blockInstanceId: string & tags.MinLength< 8 > & tags.MaxLength< 64 >;
@@ -99,6 +122,7 @@ export interface AbTestRuntimeConfiguration {
 	variantCount: VariantCount;
 	weights: AbTestTrafficWeights;
 	stickyAssignment: boolean;
+	stickyScope: StickyScope;
 	previewQueryKey: string & tags.MinLength< 1 > & tags.MaxLength< 50 >;
 	winnerMode: WinnerMode;
 	manualWinner?: VariantKey;
@@ -154,4 +178,8 @@ export interface AbTestBrowserEventPayload {
 	preview: boolean;
 	eventType?: EventType;
 	timestamp: number;
+}
+
+export interface AbTestBrowserStatsPayload extends AbTestBrowserEventPayload {
+	stats: AbTestStatsResponse;
 }

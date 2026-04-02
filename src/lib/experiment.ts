@@ -11,6 +11,7 @@ import {
 	createDefaultVariantAttributes,
 	createDefaultWinnerSnapshot,
 	DEFAULT_EXPERIMENT_ATTRIBUTES,
+	DEFAULT_EXPERIMENT_LABEL,
 } from './defaults';
 import {
 	generateBlockInstanceId,
@@ -164,9 +165,15 @@ export function sanitizeExperimentAttributes(
 
 	const experimentId =
 		typeof attributes.experimentId === 'string' &&
-		attributes.experimentId.trim().length > 0
+		attributes.experimentId.trim().length > 0 &&
+		attributes.experimentId.trim() !== 'experiment'
 			? attributes.experimentId.trim()
 			: generateExperimentId( blockInstanceId );
+	const experimentLabel =
+		typeof attributes.experimentLabel === 'string' &&
+		attributes.experimentLabel.trim().length > 0
+			? attributes.experimentLabel.trim().slice( 0, 120 )
+			: DEFAULT_EXPERIMENT_LABEL;
 
 	const previewQueryKey =
 		typeof attributes.previewQueryKey === 'string' &&
@@ -204,6 +211,7 @@ export function sanitizeExperimentAttributes(
 			DEFAULT_EXPERIMENT_ATTRIBUTES.evaluationWindowDays
 		),
 		experimentId,
+		experimentLabel,
 		lockWinnerAfterSelection:
 			typeof attributes.lockWinnerAfterSelection === 'boolean'
 				? attributes.lockWinnerAfterSelection
@@ -229,6 +237,10 @@ export function sanitizeExperimentAttributes(
 			typeof attributes.stickyAssignment === 'boolean'
 				? attributes.stickyAssignment
 				: DEFAULT_EXPERIMENT_ATTRIBUTES.stickyAssignment,
+		stickyScope:
+			attributes.stickyScope === 'experiment'
+				? 'experiment'
+				: DEFAULT_EXPERIMENT_ATTRIBUTES.stickyScope,
 		trackClicks:
 			typeof attributes.trackClicks === 'boolean'
 				? attributes.trackClicks

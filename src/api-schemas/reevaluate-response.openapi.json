@@ -73,13 +73,194 @@
 								"ctr"
 							]
 						}
+					},
+					"stats": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"instance": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"experimentId": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 191
+									},
+									"variantCount": {
+										"enum": [
+											2,
+											3
+										],
+										"type": "number"
+									},
+									"variants": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"additionalProperties": false,
+											"properties": {
+												"variantKey": {
+													"enum": [
+														"a",
+														"b",
+														"c"
+													],
+													"type": "string"
+												},
+												"impressions": {
+													"type": "number",
+													"x-typeTag": "uint32",
+													"minimum": 0
+												},
+												"clicks": {
+													"type": "number",
+													"x-typeTag": "uint32",
+													"minimum": 0
+												},
+												"ctr": {
+													"type": "number",
+													"minimum": 0
+												}
+											},
+											"required": [
+												"variantKey",
+												"impressions",
+												"clicks",
+												"ctr"
+											]
+										}
+									},
+									"postId": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"blockInstanceId": {
+										"type": "string",
+										"minLength": 8,
+										"maxLength": 64
+									},
+									"postCount": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"blockInstanceCount": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"updatedAt": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									}
+								},
+								"required": [
+									"experimentId",
+									"variantCount",
+									"variants"
+								]
+							},
+							"experiment": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"experimentId": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 191
+									},
+									"variantCount": {
+										"enum": [
+											2,
+											3
+										],
+										"type": "number"
+									},
+									"variants": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"additionalProperties": false,
+											"properties": {
+												"variantKey": {
+													"enum": [
+														"a",
+														"b",
+														"c"
+													],
+													"type": "string"
+												},
+												"impressions": {
+													"type": "number",
+													"x-typeTag": "uint32",
+													"minimum": 0
+												},
+												"clicks": {
+													"type": "number",
+													"x-typeTag": "uint32",
+													"minimum": 0
+												},
+												"ctr": {
+													"type": "number",
+													"minimum": 0
+												}
+											},
+											"required": [
+												"variantKey",
+												"impressions",
+												"clicks",
+												"ctr"
+											]
+										}
+									},
+									"postId": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"blockInstanceId": {
+										"type": "string",
+										"minLength": 8,
+										"maxLength": 64
+									},
+									"postCount": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"blockInstanceCount": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									},
+									"updatedAt": {
+										"type": "number",
+										"x-typeTag": "uint32",
+										"minimum": 0
+									}
+								},
+								"required": [
+									"experimentId",
+									"variantCount",
+									"variants"
+								]
+							}
+						},
+						"required": [
+							"instance",
+							"experiment"
+						]
 					}
 				},
 				"required": [
 					"status",
 					"metric",
 					"evaluatedAt",
-					"variants"
+					"variants",
+					"stats"
 				],
 				"title": "AbTestBlockReevaluateResponse",
 				"type": "object"

@@ -10,6 +10,8 @@ import {
 import { isVariantKey } from '../../lib/ids';
 import type {
 	AbTestBrowserEventPayload,
+	AbTestBrowserStatsPayload,
+	AbTestStatsResponse,
 	AbTestViewContext,
 	AbTestViewState,
 	AssignmentSource,
@@ -76,6 +78,7 @@ const { state } = store( 'abtest-block', {
 				assignment.source
 			);
 			state.isReady = true;
+			element.dataset.abtestReady = 'true';
 			const activeVariantElement = applyVariantVisibility(
 				element,
 				assignment.variant
@@ -346,6 +349,7 @@ async function trackEvent(
 		const result = await recordEvent(
 			{
 				blockInstanceId: context.blockInstanceId,
+				evaluationWindowDays: context.evaluationWindowDays,
 				eventType,
 				experimentId: context.experimentId,
 				postId: context.postId,
@@ -357,6 +361,7 @@ async function trackEvent(
 						: undefined,
 				source,
 				timestamp: Math.floor( Date.now() / 1000 ),
+				variantCount: context.variantCount,
 				variant,
 			},
 			context.restNonce
@@ -385,6 +390,16 @@ async function trackEvent(
 			preview,
 			eventType
 		);
+		if ( result.data.stats ) {
+			emitStatsOutputs(
+				context,
+				variant,
+				source,
+				preview,
+				eventType,
+				result.data.stats
+			);
+		}
 
 		if (
 			eventType === 'impression' &&
@@ -633,6 +648,62 @@ function emitEventOutputs(
 				) => void;
 			}
 		 ).clarity( 'set', `abtest_${ context.experimentId }`, variant );
+	}
+}
+
+function emitStatsOutputs(
+	context: AbTestViewContext,
+	variant: VariantKey,
+	source: AssignmentSource,
+	preview: boolean,
+	eventType: EventType,
+	stats: AbTestStatsResponse
+) {
+	const payload: AbTestBrowserStatsPayload = {
+		blockInstanceId: context.blockInstanceId,
+		eventType,
+		experimentId: context.experimentId,
+		postId: context.postId,
+		preview,
+		source,
+		stats,
+		timestamp: Math.floor( Date.now() / 1000 ),
+		variant,
+		variantCount: context.variantCount,
+		weights: context.weights,
+		winner: context.winnerEvaluation.winner,
+		winnerMode: context.winnerMode,
+	};
+
+	if ( context.emitBrowserEvents && typeof window !== 'undefined' ) {
+		window.dispatchEvent(
+			new CustomEvent( 'abtest:stats', { detail: payload } )
+		);
+	}
+
+	if ( context.emitKexpLayer && typeof window !== 'undefined' ) {
+		const kexpLayer = (
+			window as Window & {
+				kexpLayer?: Array< unknown >;
+			}
+		 ).kexpLayer;
+		if ( Array.isArray( kexpLayer ) ) {
+			kexpLayer.push( payload );
+		}
+	}
+
+	if ( context.emitDataLayer && typeof window !== 'undefined' ) {
+		const dataLayer = (
+			window as Window & {
+				dataLayer?: Array< unknown >;
+			}
+		 ).dataLayer;
+		if ( Array.isArray( dataLayer ) ) {
+			dataLayer.push( {
+				...payload,
+				event: 'abtest_stats',
+			} );
+		}
 	}
 }
 

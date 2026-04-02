@@ -4,6 +4,7 @@ import type { BlockConfiguration } from '@wordpress/blocks';
 import Edit from './edit';
 import Save from './save';
 import metadata from './block.json';
+import './editor-ui-store';
 import './editor.scss';
 import './style.scss';
 

@@ -7,6 +7,7 @@ import type {
 
 export const DEFAULT_PREVIEW_QUERY_KEY = 'abtest';
 export const DEFAULT_AUTOMATIC_METRIC = 'ctr';
+export const DEFAULT_EXPERIMENT_LABEL = 'Experiment';
 
 export const DEFAULT_EXPERIMENT_ATTRIBUTES: AbTestExperimentAttributes = {
 	automaticMetric: DEFAULT_AUTOMATIC_METRIC,
@@ -17,12 +18,14 @@ export const DEFAULT_EXPERIMENT_ATTRIBUTES: AbTestExperimentAttributes = {
 	emitKexpLayer: false,
 	evaluationWindowDays: 14,
 	experimentId: 'experiment',
+	experimentLabel: DEFAULT_EXPERIMENT_LABEL,
 	lockWinnerAfterSelection: true,
 	manualWinner: undefined,
 	minimumClicksPerVariant: 1,
 	minimumImpressionsPerVariant: 100,
 	previewQueryKey: DEFAULT_PREVIEW_QUERY_KEY,
 	stickyAssignment: true,
+	stickyScope: 'instance',
 	trackClicks: true,
 	trackImpressions: true,
 	variantCount: 2,

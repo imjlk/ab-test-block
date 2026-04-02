@@ -172,8 +172,15 @@ jobs:
                   )"
                   grep -qx '/abtest-block/v1/event' <<< "${routes}"
                   grep -qx '/abtest-block/v1/reevaluate' <<< "${routes}"
+                  grep -qx '/abtest-block/v1/stats' <<< "${routes}"
 
                   curl --fail --silent --show-error http://localhost:8890/wp-login.php > /dev/null
+
+            - name: Install Playwright browser
+              run: bunx playwright install --with-deps chromium
+
+            - name: Run Playwright smoke
+              run: bun run smoke:e2e
 
             - name: Stop WordPress
               if: always()

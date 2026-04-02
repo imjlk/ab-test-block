@@ -40,6 +40,39 @@ return new class {
 						'type' => 'string'
 					]
 				],
+				'experimentLabel' => [
+					'typia' => [
+						'constraints' => [
+							'exclusiveMaximum' => null,
+							'exclusiveMinimum' => null,
+							'format' => null,
+							'maxLength' => 120,
+							'maxItems' => null,
+							'maximum' => null,
+							'minLength' => 1,
+							'minItems' => null,
+							'minimum' => null,
+							'multipleOf' => null,
+							'pattern' => null,
+							'typeTag' => null
+						],
+						'defaultValue' => 'Experiment',
+						'hasDefault' => true
+					],
+					'ts' => [
+						'items' => null,
+						'kind' => 'string',
+						'properties' => null,
+						'required' => true,
+						'union' => null
+					],
+					'wp' => [
+						'defaultValue' => 'Experiment',
+						'enum' => null,
+						'hasDefault' => true,
+						'type' => 'string'
+					]
+				],
 				'variantCount' => [
 					'typia' => [
 						'constraints' => [
@@ -273,6 +306,42 @@ return new class {
 						'enum' => null,
 						'hasDefault' => true,
 						'type' => 'boolean'
+					]
+				],
+				'stickyScope' => [
+					'typia' => [
+						'constraints' => [
+							'exclusiveMaximum' => null,
+							'exclusiveMinimum' => null,
+							'format' => null,
+							'maxLength' => null,
+							'maxItems' => null,
+							'maximum' => null,
+							'minLength' => null,
+							'minItems' => null,
+							'minimum' => null,
+							'multipleOf' => null,
+							'pattern' => null,
+							'typeTag' => null
+						],
+						'defaultValue' => 'instance',
+						'hasDefault' => true
+					],
+					'ts' => [
+						'items' => null,
+						'kind' => 'string',
+						'properties' => null,
+						'required' => true,
+						'union' => null
+					],
+					'wp' => [
+						'defaultValue' => 'instance',
+						'enum' => [
+							'instance',
+							'experiment'
+						],
+						'hasDefault' => true,
+						'type' => 'string'
 					]
 				],
 				'winnerMode' => [

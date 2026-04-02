@@ -9,11 +9,14 @@ import {
 	type AbTestBlockRecordEventResponse,
 	type AbTestBlockReevaluateRequest,
 	type AbTestBlockReevaluateResponse,
+	type AbTestBlockStatsRequest,
+	type AbTestBlockStatsResponse,
 } from './api-types';
 import { apiValidators } from './api-validators';
 
 const EVENT_PATH = '/abtest-block/v1/event';
 const REEVALUATE_PATH = '/abtest-block/v1/reevaluate';
+const STATS_PATH = '/abtest-block/v1/stats';
 
 function resolveRestNonce( fallback?: string ): string | undefined {
 	if ( typeof fallback === 'string' && fallback.length > 0 ) {
@@ -58,6 +61,19 @@ export const reevaluateExperimentEndpoint = createEndpoint<
 	validateResponse: apiValidators.reevaluateResponse,
 } );
 
+export const statsEndpoint = createEndpoint<
+	AbTestBlockStatsRequest,
+	AbTestBlockStatsResponse
+>( {
+	buildRequestOptions: () => ( {
+		url: resolveRestRouteUrl( STATS_PATH ),
+	} ),
+	method: 'GET',
+	path: STATS_PATH,
+	validateRequest: apiValidators.statsRequest,
+	validateResponse: apiValidators.statsResponse,
+} );
+
 export function recordEvent(
 	request: AbTestBlockRecordEventRequest,
 	restNonce?: string
@@ -82,6 +98,23 @@ export function reevaluateExperiment(
 	const nonce = resolveRestNonce( restNonce );
 
 	return callEndpoint( reevaluateExperimentEndpoint, request, {
+		requestOptions: nonce
+			? {
+					headers: {
+						'X-WP-Nonce': nonce,
+					},
+			  }
+			: undefined,
+	} );
+}
+
+export function fetchStats(
+	request: AbTestBlockStatsRequest,
+	restNonce?: string
+) {
+	const nonce = resolveRestNonce( restNonce );
+
+	return callEndpoint( statsEndpoint, request, {
 		requestOptions: nonce
 			? {
 					headers: {

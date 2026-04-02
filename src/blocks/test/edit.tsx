@@ -1,6 +1,5 @@
 import { createBlock } from '@wordpress/blocks';
 import {
-	BlockControls,
 	InspectorControls,
 	InnerBlocks,
 	store as blockEditorStore,
@@ -13,13 +12,12 @@ import {
 	SelectControl,
 	TextControl,
 	ToggleControl,
-	ToolbarButton,
-	ToolbarGroup,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
+import { fetchStats } from '../../api';
 import {
 	equalizeWeights,
 	getVariantKeys,
@@ -30,7 +28,10 @@ import {
 } from '../../lib/experiment';
 import type {
 	AbTestExperimentAttributes,
+	AbTestStatsResponse,
+	AbTestStatsScopeSnapshot,
 	AbTestWinnerEvaluationSnapshot,
+	StickyScope,
 	VariantCount,
 	VariantKey,
 	WinnerLifecycleState,
@@ -42,6 +43,7 @@ import {
 	getExperimentValidationState,
 	sanitizeParentAttributes,
 } from './validators';
+import { editorUiStore, type EditorPreviewMode } from './editor-ui-store';
 
 type BlockRecord = {
 	clientId: string;
@@ -55,8 +57,6 @@ type BlockRecord = {
 	};
 	innerBlocks?: BlockRecord[];
 };
-
-type PreviewMode = 'traffic' | 'winner';
 
 type WinnerPreviewState = {
 	source:
@@ -120,13 +120,17 @@ export default function Edit( {
 	setAttributes: ( attrs: Partial< AbTestExperimentAttributes > ) => void;
 } ) {
 	const [ previewMode, setPreviewMode ] =
-		useState< PreviewMode >( 'traffic' );
+		useState< EditorPreviewMode >( 'traffic' );
 	const [ lastTrafficVariantKey, setLastTrafficVariantKey ] =
 		useState< VariantKey >( 'a' );
 	const [ showAssignmentLabel, setShowAssignmentLabel ] = useState( true );
 	const [ showWinnerState, setShowWinnerState ] = useState( true );
 	const [ enableQueryPreviewHints, setEnableQueryPreviewHints ] =
 		useState( true );
+	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
+	const [ isStatsLoading, setIsStatsLoading ] = useState( false );
+	const [ statsError, setStatsError ] = useState< string | undefined >();
+	const [ statsRefreshToken, setStatsRefreshToken ] = useState( 0 );
 	const pendingFocusVariantKeyRef = useRef< VariantKey | undefined >();
 	const normalizedAttributes = useMemo(
 		() => sanitizeParentAttributes( attributes ),
@@ -134,7 +138,7 @@ export default function Edit( {
 	);
 	const {
 		innerBlocks,
-		isParentSelected,
+		postId,
 		selectedBlockClientId,
 		selectedVariantKey,
 		storedWinnerEvaluation,
@@ -146,6 +150,11 @@ export default function Edit( {
 			const postEditor = select( 'core/editor' );
 			const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
 				{} ) as Record< string, unknown >;
+			const nextPostId = Number(
+				postEditor?.getCurrentPostId?.() ??
+					postEditor?.getEditedPostAttribute?.( 'id' ) ??
+					0
+			);
 			const winnerStateMap = meta._ab_test_block_winner_state as
 				| Record< string, unknown >
 				| undefined;
@@ -171,7 +180,7 @@ export default function Edit( {
 
 			return {
 				innerBlocks: blocks,
-				isParentSelected: editor.isBlockSelected( clientId ) as boolean,
+				postId: Number.isNaN( nextPostId ) ? 0 : nextPostId,
 				selectedBlockClientId: nextSelectedBlockClientId,
 				selectedVariantKey: nextSelectedVariantKey,
 				storedWinnerEvaluation: sanitizeWinnerSnapshot(
@@ -201,6 +210,17 @@ export default function Edit( {
 				attributes: Record< string, unknown >
 			) => void;
 		};
+	const { clearUi, setUi } = useDispatch( editorUiStore as never ) as {
+		clearUi: ( parentClientId: string ) => void;
+		setUi: (
+			parentClientId: string,
+			value: {
+				previewMode?: EditorPreviewMode;
+				trafficVariantKey?: VariantKey;
+				visibleVariantKey?: VariantKey;
+			}
+		) => void;
+	};
 	const variantKeys = getVariantKeys( normalizedAttributes.variantCount );
 	const innerBlockByVariant = useMemo(
 		() =>
@@ -248,9 +268,12 @@ export default function Edit( {
 		activePreviewVariantKey,
 		winnerPreviewState
 	);
-	const stickyLabel = normalizedAttributes.stickyAssignment
-		? __( 'Sticky', 'ab-test-block' )
-		: __( 'Non-sticky', 'ab-test-block' );
+	const assignmentSourceText = getAssignmentSourceText(
+		normalizedAttributes,
+		previewMode,
+		winnerPreviewState
+	);
+	const stickyLabel = getStickyLabel( normalizedAttributes );
 	const updateAttribute = useMemo(
 		() =>
 			createExperimentAttributeUpdater(
@@ -281,9 +304,18 @@ export default function Edit( {
 
 		if (
 			typeof attributes.experimentId !== 'string' ||
-			attributes.experimentId.trim().length === 0
+			attributes.experimentId.trim().length === 0 ||
+			attributes.experimentId.trim() === 'experiment'
 		) {
 			nextAttributes.experimentId = normalizedAttributes.experimentId;
+		}
+
+		if (
+			typeof attributes.experimentLabel !== 'string' ||
+			attributes.experimentLabel.trim().length === 0
+		) {
+			nextAttributes.experimentLabel =
+				normalizedAttributes.experimentLabel;
 		}
 
 		if (
@@ -292,6 +324,10 @@ export default function Edit( {
 		) {
 			nextAttributes.previewQueryKey =
 				normalizedAttributes.previewQueryKey;
+		}
+
+		if ( attributes.stickyScope !== normalizedAttributes.stickyScope ) {
+			nextAttributes.stickyScope = normalizedAttributes.stickyScope;
 		}
 
 		if (
@@ -314,14 +350,18 @@ export default function Edit( {
 	}, [
 		attributes.blockInstanceId,
 		attributes.experimentId,
+		attributes.experimentLabel,
 		attributes.manualWinner,
 		attributes.previewQueryKey,
+		attributes.stickyScope,
 		attributes.weights,
 		clientId,
 		normalizedAttributes.blockInstanceId,
 		normalizedAttributes.experimentId,
+		normalizedAttributes.experimentLabel,
 		normalizedAttributes.manualWinner,
 		normalizedAttributes.previewQueryKey,
+		normalizedAttributes.stickyScope,
 		normalizedAttributes.variantCount,
 		normalizedAttributes.weights,
 		updateBlockAttributes,
@@ -418,30 +458,85 @@ export default function Edit( {
 	}, [ lastTrafficVariantKey, variantKeys ] );
 
 	useEffect( () => {
-		let targetVariantKey: VariantKey | undefined;
+		setUi( clientId, {
+			previewMode,
+			trafficVariantKey: lastTrafficVariantKey,
+			visibleVariantKey: activePreviewVariantKey,
+		} );
+	}, [
+		activePreviewVariantKey,
+		clientId,
+		lastTrafficVariantKey,
+		previewMode,
+		setUi,
+	] );
 
-		if ( previewMode === 'winner' ) {
-			targetVariantKey = winnerPreviewState.variant;
-		} else if ( isParentSelected || ! activeTrafficVariantKey ) {
-			targetVariantKey = activePreviewVariantKey;
-		}
+	useEffect( () => () => clearUi( clientId ), [ clearUi, clientId ] );
 
-		if ( ! targetVariantKey ) {
+	useEffect( () => {
+		if ( postId <= 0 ) {
+			setStats( undefined );
+			setStatsError( undefined );
+			setIsStatsLoading( false );
 			return;
 		}
 
-		const targetBlock = innerBlockByVariant.get( targetVariantKey );
-		if ( targetBlock?.clientId ) {
-			selectBlock( targetBlock.clientId );
-		}
+		let isCurrent = true;
+
+		setIsStatsLoading( true );
+		setStatsError( undefined );
+
+		void fetchStats( {
+			blockInstanceId: normalizedAttributes.blockInstanceId,
+			evaluationWindowDays: normalizedAttributes.evaluationWindowDays,
+			experimentId: normalizedAttributes.experimentId,
+			postId,
+			variantCount: normalizedAttributes.variantCount,
+		} )
+			.then( ( result ) => {
+				if ( ! isCurrent ) {
+					return;
+				}
+
+				if ( ! result.isValid || ! result.data ) {
+					setStats( undefined );
+					setStatsError(
+						result.errors[ 0 ]?.expected ??
+							__( 'Unable to load stats.', 'ab-test-block' )
+					);
+					return;
+				}
+
+				setStats( result.data );
+			} )
+			.catch( ( error ) => {
+				if ( ! isCurrent ) {
+					return;
+				}
+
+				setStats( undefined );
+				setStatsError(
+					error instanceof Error
+						? error.message
+						: __( 'Unknown stats error.', 'ab-test-block' )
+				);
+			} )
+			.finally( () => {
+				if ( isCurrent ) {
+					setIsStatsLoading( false );
+				}
+			} );
+
+		return () => {
+			isCurrent = false;
+		};
 	}, [
-		activePreviewVariantKey,
-		activeTrafficVariantKey,
-		innerBlockByVariant,
-		isParentSelected,
-		previewMode,
-		selectBlock,
-		winnerPreviewState.variant,
+		normalizedAttributes.blockInstanceId,
+		normalizedAttributes.evaluationWindowDays,
+		normalizedAttributes.experimentId,
+		normalizedAttributes.variantCount,
+		postId,
+		statsRefreshToken,
 	] );
 
 	function updateNumberAttribute(
@@ -540,54 +635,87 @@ export default function Edit( {
 		[ normalizedAttributes ]
 	);
 	const validationErrors = validationState.errorMessages;
+	const activeVariantHeading = sprintf(
+		/* translators: %s: variant key */
+		__( 'Variant %s', 'ab-test-block' ),
+		activePreviewVariantKey.toUpperCase()
+	);
+	const stageEyebrow =
+		previewMode === 'winner'
+			? __( 'Winner Preview', 'ab-test-block' )
+			: __( 'Editing Traffic Variant', 'ab-test-block' );
+	const queryPreviewHint = sprintf(
+		/* translators: 1: query key, 2: experiment id */
+		__( 'Preview hints: ?%1$s=b or ?abtest=%2$s:b', 'ab-test-block' ),
+		normalizedAttributes.previewQueryKey,
+		normalizedAttributes.experimentId
+	);
+	const hasTrackedStats = Boolean(
+		stats?.instance.updatedAt || stats?.experiment.updatedAt
+	);
+
+	function refreshStats() {
+		setStatsRefreshToken( ( current ) => current + 1 );
+	}
 
 	return (
 		<>
-			<BlockControls>
-				<ToolbarGroup>
-					{ variantKeys.map( ( variantKey ) => (
-						<ToolbarButton
-							key={ variantKey }
-							label={ sprintf(
-								/* translators: %s: variant key */
-								__( 'Edit %s', 'ab-test-block' ),
-								variantKey.toUpperCase()
-							) }
-							onClick={ () =>
-								activateVariantEditor( variantKey )
-							}
-						/>
-					) ) }
-					{ normalizedAttributes.variantCount === 2 ? (
-						<ToolbarButton
-							label={ __( 'Add C', 'ab-test-block' ) }
-							onClick={ () => setVariantCount( 3, 'c' ) }
-						/>
-					) : (
-						<ToolbarButton
-							label={ __( 'Remove C', 'ab-test-block' ) }
-							onClick={ () => setVariantCount( 2, 'b' ) }
-						/>
-					) }
-				</ToolbarGroup>
-				<ToolbarGroup>
-					<ToolbarButton
-						isPressed={ previewMode === 'winner' }
-						label={ __( 'Preview Winner', 'ab-test-block' ) }
-						onClick={ previewWinnerMode }
-					/>
-					<ToolbarButton
-						isPressed={ previewMode === 'traffic' }
-						label={ __( 'Preview Traffic Mode', 'ab-test-block' ) }
-						onClick={ previewTrafficMode }
-					/>
-				</ToolbarGroup>
-			</BlockControls>
 			<InspectorControls>
 				<PanelBody
-					title={ __( 'General', 'ab-test-block' ) }
+					title={ __( 'Editor Preview', 'ab-test-block' ) }
 					initialOpen
 				>
+					<SelectControl
+						label={ __( 'Preview mode', 'ab-test-block' ) }
+						value={ previewMode }
+						options={ [
+							{
+								label: __( 'Traffic mode', 'ab-test-block' ),
+								value: 'traffic',
+							},
+							{
+								label: __( 'Winner preview', 'ab-test-block' ),
+								value: 'winner',
+							},
+						] }
+						onChange={ ( value ) => {
+							if ( value === 'winner' ) {
+								previewWinnerMode();
+								return;
+							}
+
+							previewTrafficMode();
+						} }
+						help={ __(
+							'Traffic mode edits one variant at a time. Winner preview lets you inspect the currently resolved winner without changing saved settings.',
+							'ab-test-block'
+						) }
+					/>
+					<Notice status="info" isDismissible={ false }>
+						{ previewSummary }
+					</Notice>
+					{ previewMode === 'winner' &&
+						! winnerPreviewState.variant && (
+							<Notice status="warning" isDismissible={ false }>
+								{ __(
+									'Winner preview does not yet have a resolved variant to show in the editor.',
+									'ab-test-block'
+								) }
+							</Notice>
+						) }
+				</PanelBody>
+				<PanelBody title={ __( 'General', 'ab-test-block' ) }>
+					<TextControl
+						label={ __( 'Experiment label', 'ab-test-block' ) }
+						value={ normalizedAttributes.experimentLabel }
+						onChange={ ( value ) =>
+							updateAttribute( 'experimentLabel', value )
+						}
+						help={ __(
+							'Human-friendly label used in the editor shell and debug stats.',
+							'ab-test-block'
+						) }
+					/>
 					<TextControl
 						label={ __( 'Experiment ID', 'ab-test-block' ) }
 						value={ normalizedAttributes.experimentId }
@@ -595,7 +723,7 @@ export default function Edit( {
 							updateAttribute( 'experimentId', value )
 						}
 						help={ __(
-							'Used for query preview and analytics payloads.',
+							'Machine-readable grouping key for query preview, analytics payloads, and optional cross-post experiment aggregates.',
 							'ab-test-block'
 						) }
 					/>
@@ -634,7 +762,55 @@ export default function Edit( {
 						onChange={ ( value ) =>
 							updateAttribute( 'stickyAssignment', value )
 						}
+						help={
+							normalizedAttributes.stickyAssignment
+								? __(
+										'Keeps the assigned variant stable for the current browser using localStorage only.',
+										'ab-test-block'
+								  )
+								: __(
+										'Weighted random is recalculated on every page load.',
+										'ab-test-block'
+								  )
+						}
 					/>
+					{ normalizedAttributes.stickyAssignment && (
+						<SelectControl
+							label={ __( 'Sticky scope', 'ab-test-block' ) }
+							value={ normalizedAttributes.stickyScope }
+							options={ [
+								{
+									label: __( 'Page block', 'ab-test-block' ),
+									value: 'instance',
+								},
+								{
+									label: __(
+										'Shared experiment',
+										'ab-test-block'
+									),
+									value: 'experiment',
+								},
+							] }
+							help={
+								normalizedAttributes.stickyScope ===
+								'experiment'
+									? __(
+											'Shares one sticky assignment across every page using the same Experiment ID.',
+											'ab-test-block'
+									  )
+									: __(
+											'Keeps sticky assignment scoped to this page and block instance only.',
+											'ab-test-block'
+									  )
+							}
+							onChange={ ( value ) =>
+								updateAttribute(
+									'stickyScope',
+									value as StickyScope
+								)
+							}
+						/>
+					) }
 				</PanelBody>
 				<PanelBody
 					title={ __( 'Traffic Allocation', 'ab-test-block' ) }
@@ -887,6 +1063,66 @@ export default function Edit( {
 					/>
 				</PanelBody>
 				<PanelBody title={ __( 'Debug', 'ab-test-block' ) }>
+					<Notice status="info" isDismissible={ false }>
+						{ __(
+							'Saved server stats are shown here for both this block instance and the shared experiment ID. Preview mode does not write new stats.',
+							'ab-test-block'
+						) }
+					</Notice>
+					<div className="wp-block-abtest-block-test__stats-actions">
+						<Button
+							variant="secondary"
+							onClick={ refreshStats }
+							disabled={ isStatsLoading || postId <= 0 }
+						>
+							{ isStatsLoading
+								? __( 'Refreshing…', 'ab-test-block' )
+								: __( 'Refresh stats', 'ab-test-block' ) }
+						</Button>
+					</div>
+					{ statsError && (
+						<Notice status="warning" isDismissible={ false }>
+							{ statsError }
+						</Notice>
+					) }
+					{ ! isStatsLoading && ! statsError && ! hasTrackedStats && (
+						<Notice status="info" isDismissible={ false }>
+							{ __(
+								'No tracked events yet. Once front-end impressions or clicks are counted, stats will appear here.',
+								'ab-test-block'
+							) }
+						</Notice>
+					) }
+					{ stats && (
+						<div className="wp-block-abtest-block-test__stats-grid">
+							{ renderStatsCard(
+								__( 'This block', 'ab-test-block' ),
+								stats.instance
+							) }
+							{ renderStatsCard(
+								__( 'This experiment', 'ab-test-block' ),
+								stats.experiment
+							) }
+						</div>
+					) }
+					{ showAssignmentLabel && (
+						<p className="wp-block-abtest-block-test__sidebar-note">
+							{ assignmentPreviewText }
+						</p>
+					) }
+					{ showWinnerState && (
+						<p className="wp-block-abtest-block-test__sidebar-note">
+							{ winnerStateText }
+						</p>
+					) }
+					{ enableQueryPreviewHints && (
+						<p className="wp-block-abtest-block-test__sidebar-note">
+							{ queryPreviewHint }
+						</p>
+					) }
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ assignmentSourceText }
+					</p>
 					<ToggleControl
 						label={ __(
 							'Show current assignment label in editor preview',
@@ -924,7 +1160,7 @@ export default function Edit( {
 							{ __( 'A/B Experiment', 'ab-test-block' ) }
 						</p>
 						<h3 className="wp-block-abtest-block-test__title">
-							{ normalizedAttributes.experimentId }
+							{ normalizedAttributes.experimentLabel }
 						</h3>
 					</div>
 					<div className="wp-block-abtest-block-test__summary">
@@ -938,68 +1174,37 @@ export default function Edit( {
 						<span>{ stickyLabel }</span>
 					</div>
 				</div>
-				<div className="wp-block-abtest-block-test__tabs">
-					{ variantKeys.map( ( variantKey ) => (
-						<Button
-							key={ variantKey }
-							className="wp-block-abtest-block-test__tab"
-							variant={
-								activePreviewVariantKey === variantKey
-									? 'primary'
-									: 'secondary'
-							}
-							onClick={ () =>
-								activateVariantEditor( variantKey )
-							}
-						>
-							{ sprintf(
-								/* translators: %s: variant key */
-								__( 'Variant %s', 'ab-test-block' ),
-								variantKey.toUpperCase()
-							) }
-						</Button>
-					) ) }
-					{ normalizedAttributes.variantCount === 2 ? (
-						<Button
-							className="wp-block-abtest-block-test__tab-action"
-							variant="secondary"
-							onClick={ () => setVariantCount( 3, 'c' ) }
-						>
-							{ __( 'Add C', 'ab-test-block' ) }
-						</Button>
-					) : (
-						<Button
-							className="wp-block-abtest-block-test__tab-action"
-							variant="secondary"
-							onClick={ () => setVariantCount( 2, 'b' ) }
-						>
-							{ __( 'Remove C', 'ab-test-block' ) }
-						</Button>
-					) }
+				<div className="wp-block-abtest-block-test__workspace">
+					<div className="wp-block-abtest-block-test__tabs">
+						{ variantKeys.map( ( variantKey ) => (
+							<Button
+								key={ variantKey }
+								className="wp-block-abtest-block-test__tab"
+								variant={
+									activePreviewVariantKey === variantKey
+										? 'primary'
+										: 'secondary'
+								}
+								onClick={ () =>
+									activateVariantEditor( variantKey )
+								}
+							>
+								{ variantKey.toUpperCase() }
+							</Button>
+						) ) }
+					</div>
+					<div className="wp-block-abtest-block-test__workspace-meta">
+						<p className="wp-block-abtest-block-test__workspace-eyebrow">
+							{ stageEyebrow }
+						</p>
+						<h4 className="wp-block-abtest-block-test__workspace-title">
+							{ activeVariantHeading }
+						</h4>
+						<p className="wp-block-abtest-block-test__workspace-copy">
+							{ previewSummary }
+						</p>
+					</div>
 				</div>
-				<div className="wp-block-abtest-block-test__preview-controls">
-					<Button
-						className="wp-block-abtest-block-test__preview-button"
-						variant={
-							previewMode === 'traffic' ? 'primary' : 'secondary'
-						}
-						onClick={ previewTrafficMode }
-					>
-						{ __( 'Preview Traffic Mode', 'ab-test-block' ) }
-					</Button>
-					<Button
-						className="wp-block-abtest-block-test__preview-button"
-						variant={
-							previewMode === 'winner' ? 'primary' : 'secondary'
-						}
-						onClick={ previewWinnerMode }
-					>
-						{ __( 'Preview Winner', 'ab-test-block' ) }
-					</Button>
-				</div>
-				<Notice status="info" isDismissible={ false }>
-					{ previewSummary }
-				</Notice>
 				{ previewMode === 'winner' && ! winnerPreviewState.variant && (
 					<Notice status="warning" isDismissible={ false }>
 						{ __(
@@ -1007,29 +1212,6 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					</Notice>
-				) }
-				{ showWinnerState && (
-					<p className="wp-block-abtest-block-test__debug">
-						{ winnerStateText }
-					</p>
-				) }
-				{ showAssignmentLabel && (
-					<p className="wp-block-abtest-block-test__debug">
-						{ assignmentPreviewText }
-					</p>
-				) }
-				{ enableQueryPreviewHints && (
-					<p className="wp-block-abtest-block-test__debug">
-						{ sprintf(
-							/* translators: 1: query key, 2: experiment id */
-							__(
-								'Preview hints: ?%1$s=b or ?abtest=%2$s:b',
-								'ab-test-block'
-							),
-							normalizedAttributes.previewQueryKey,
-							normalizedAttributes.experimentId
-						) }
-					</p>
 				) }
 				{ validationErrors.map( ( error ) => (
 					<Notice
@@ -1119,7 +1301,7 @@ function getWinnerPreviewState(
 
 function getPreviewSummary(
 	attributes: AbTestExperimentAttributes,
-	previewMode: PreviewMode,
+	previewMode: EditorPreviewMode,
 	activeVariantKey: VariantKey,
 	winnerPreviewState: WinnerPreviewState
 ) {
@@ -1163,7 +1345,7 @@ function getPreviewSummary(
 }
 
 function getAssignmentPreviewText(
-	previewMode: PreviewMode,
+	previewMode: EditorPreviewMode,
 	activeVariantKey: VariantKey,
 	winnerPreviewState: WinnerPreviewState
 ) {
@@ -1252,4 +1434,138 @@ function getWinnerStateText(
 	}
 
 	return __( 'Winner state: no resolved winner yet', 'ab-test-block' );
+}
+
+function getAssignmentSourceText(
+	attributes: AbTestExperimentAttributes,
+	previewMode: EditorPreviewMode,
+	winnerPreviewState: WinnerPreviewState
+) {
+	if ( previewMode === 'winner' ) {
+		if ( winnerPreviewState.source === 'manual-winner' ) {
+			return __(
+				'Assignment source in this preview: manual-winner.',
+				'ab-test-block'
+			);
+		}
+
+		if ( winnerPreviewState.source === 'automatic-winner-locked' ) {
+			return __(
+				'Assignment source in this preview: locked-winner.',
+				'ab-test-block'
+			);
+		}
+
+		if ( winnerPreviewState.source === 'automatic-candidate' ) {
+			return __(
+				'Assignment source in this preview: automatic-winner candidate.',
+				'ab-test-block'
+			);
+		}
+
+		return __(
+			'Assignment source in this preview: no resolved winner is available yet.',
+			'ab-test-block'
+		);
+	}
+
+	if ( ! attributes.stickyAssignment ) {
+		return __(
+			'Assignment source in traffic mode: weighted-random on every page load.',
+			'ab-test-block'
+		);
+	}
+
+	if ( attributes.stickyScope === 'experiment' ) {
+		return __(
+			'Assignment source in traffic mode: weighted-random on first view, then sticky by shared Experiment ID.',
+			'ab-test-block'
+		);
+	}
+
+	return __(
+		'Assignment source in traffic mode: weighted-random on first view, then sticky for this page and block instance.',
+		'ab-test-block'
+	);
+}
+
+function getStickyLabel( attributes: AbTestExperimentAttributes ) {
+	if ( ! attributes.stickyAssignment ) {
+		return String( __( 'Non-sticky', 'ab-test-block' ) );
+	}
+
+	if ( attributes.stickyScope === 'experiment' ) {
+		return String( __( 'Sticky experiment', 'ab-test-block' ) );
+	}
+
+	return String( __( 'Sticky page block', 'ab-test-block' ) );
+}
+
+function renderStatsCard( title: string, snapshot: AbTestStatsScopeSnapshot ) {
+	return (
+		<div className="wp-block-abtest-block-test__stats-card">
+			<div className="wp-block-abtest-block-test__stats-head">
+				<h4 className="wp-block-abtest-block-test__stats-title">
+					{ title }
+				</h4>
+				<p className="wp-block-abtest-block-test__stats-meta">
+					{ snapshot.updatedAt
+						? sprintf(
+								/* translators: %s: date and time */
+								__( 'Updated %s', 'ab-test-block' ),
+								new Date(
+									snapshot.updatedAt * 1000
+								).toLocaleString()
+						  )
+						: __( 'No saved events yet', 'ab-test-block' ) }
+				</p>
+				{ typeof snapshot.postCount === 'number' &&
+					typeof snapshot.blockInstanceCount === 'number' && (
+						<p className="wp-block-abtest-block-test__stats-meta">
+							{ sprintf(
+								/* translators: 1: post count, 2: block instance count */
+								__(
+									'%1$d posts · %2$d block instances',
+									'ab-test-block'
+								),
+								snapshot.postCount,
+								snapshot.blockInstanceCount
+							) }
+						</p>
+					) }
+			</div>
+			<div className="wp-block-abtest-block-test__stats-rows">
+				{ snapshot.variants.map( ( variant ) => (
+					<div
+						key={ variant.variantKey }
+						className="wp-block-abtest-block-test__stats-row"
+					>
+						<span className="wp-block-abtest-block-test__stats-key">
+							{ sprintf(
+								/* translators: %s: variant key */
+								__( 'Variant %s', 'ab-test-block' ),
+								variant.variantKey.toUpperCase()
+							) }
+						</span>
+						<span className="wp-block-abtest-block-test__stats-value">
+							{ sprintf(
+								/* translators: 1: impression count, 2: click count, 3: ctr percentage */
+								__(
+									'%1$d impressions · %2$d clicks · %3$s CTR',
+									'ab-test-block'
+								),
+								variant.impressions,
+								variant.clicks,
+								formatCtrPercentage( variant.ctr )
+							) }
+						</span>
+					</div>
+				) ) }
+			</div>
+		</div>
+	);
+}
+
+function formatCtrPercentage( value: number ) {
+	return `${ ( value * 100 ).toFixed( 1 ) }%`;
 }

@@ -28,6 +28,7 @@
 		"start": "bun run sync-types && bun run sync-rest && wp-scripts start --experimental-modules",
 		"dev": "bun run start",
 		"plugin-zip": "bun run build && wp-scripts plugin-zip --root-folder=ab-test-block",
+		"smoke:e2e": "tsx scripts/playwright-smoke.ts",
 		"env:start": "wp-env start",
 		"env:status": "wp-env status",
 		"env:stop": "wp-env stop",
@@ -49,6 +50,7 @@
 		"@wordpress/env": "^10.0.0",
 		"@wordpress/scripts": "^30.22.0",
 		"@typia/unplugin": "^12.0.1",
+		"playwright": "^1.59.0",
 		"tsx": "^4.20.5",
 		"typescript": "^5.9.2",
 		"typia": "^12.0.1"

@@ -1,0 +1,671 @@
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
+
+import { chromium, type Browser, type Page } from 'playwright';
+
+type StickyScope = 'experiment' | 'instance';
+type VariantKey = 'a' | 'b';
+
+const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
+const ADMIN_USER = process.env.AB_TEST_BLOCK_ADMIN_USER ?? 'admin';
+const ADMIN_PASSWORD = process.env.AB_TEST_BLOCK_ADMIN_PASSWORD ?? 'password';
+const WP_ENV_BIN = join( process.cwd(), 'node_modules', '.bin', 'wp-env' );
+
+const createdPostIds: number[] = [];
+const browsers: Browser[] = [];
+
+function writeLog( value: string ) {
+	process.stdout.write( `${ value }\n` );
+}
+
+function writeWarning( value: string ) {
+	process.stderr.write( `${ value }\n` );
+}
+
+function assert( condition: unknown, message: string ): asserts condition {
+	if ( ! condition ) {
+		throw new Error( message );
+	}
+}
+
+function runWp( args: string[] ) {
+	return execFileSync( WP_ENV_BIN, [ 'run', 'cli', 'wp', ...args ], {
+		cwd: process.cwd(),
+		encoding: 'utf8',
+		env: process.env,
+	} ).trim();
+}
+
+function createFixturePost( title: string, content: string ) {
+	const output = runWp( [
+		'post',
+		'create',
+		`--post_title=${ title }`,
+		`--post_content=${ content }`,
+		'--post_status=publish',
+		'--porcelain',
+	] );
+	const postId = Number.parseInt( output.split( /\s+/ ).pop() ?? '', 10 );
+
+	assert(
+		Number.isInteger( postId ) && postId > 0,
+		`Failed to create fixture post for ${ title }`
+	);
+
+	createdPostIds.push( postId );
+
+	return postId;
+}
+
+function buildParagraph( text: string ) {
+	return `<!-- wp:paragraph --><p>${ text }</p><!-- /wp:paragraph -->`;
+}
+
+function buildVariantBlock( variantKey: VariantKey, html: string ) {
+	return `<!-- wp:abtest-block/variant ${ JSON.stringify( {
+		variantKey,
+		variantLabel: `Variant ${ variantKey.toUpperCase() }`,
+	} ) } --><div class="wp-block-abtest-block-variant" data-abtest-variant="${ variantKey }" data-variant-label="Variant ${ variantKey.toUpperCase() }">${ html }</div><!-- /wp:abtest-block/variant -->`;
+}
+
+function buildExperimentBlock( {
+	blockInstanceId,
+	experimentId,
+	experimentLabel,
+	emitDataLayer = false,
+	stickyAssignment = true,
+	stickyScope = 'instance',
+	variantABody,
+	variantBBody,
+}: {
+	blockInstanceId: string;
+	experimentId: string;
+	experimentLabel: string;
+	emitDataLayer?: boolean;
+	stickyAssignment?: boolean;
+	stickyScope?: StickyScope;
+	variantABody: string;
+	variantBBody: string;
+} ) {
+	const attributes = {
+		automaticMetric: 'ctr',
+		blockInstanceId,
+		emitBrowserEvents: true,
+		emitClarityHook: false,
+		emitDataLayer,
+		emitKexpLayer: false,
+		evaluationWindowDays: 14,
+		experimentId,
+		experimentLabel,
+		lockWinnerAfterSelection: true,
+		minimumClicksPerVariant: 1,
+		minimumImpressionsPerVariant: 100,
+		previewQueryKey: `ab_${ experimentId }`,
+		stickyAssignment,
+		stickyScope,
+		trackClicks: true,
+		trackImpressions: true,
+		variantCount: 2,
+		weights: {
+			a: 50,
+			b: 50,
+		},
+		winnerMode: 'off',
+	};
+
+	return `<!-- wp:abtest-block/test ${ JSON.stringify(
+		attributes
+	) } -->${ buildVariantBlock(
+		'a',
+		buildParagraph( variantABody )
+	) }${ buildVariantBlock(
+		'b',
+		buildParagraph( variantBBody )
+	) }<!-- /wp:abtest-block/test -->`;
+}
+
+async function launchContext( initScript?: () => void ) {
+	const browser = await chromium.launch( { headless: true } );
+	const context = await browser.newContext();
+
+	browsers.push( browser );
+
+	if ( initScript ) {
+		await context.addInitScript( initScript );
+	}
+
+	return context;
+}
+
+async function loginToWpAdmin( page: Page ) {
+	await page.goto( `${ BASE_URL }/wp-login.php`, {
+		waitUntil: 'domcontentloaded',
+	} );
+
+	await page.locator( '#user_login' ).fill( ADMIN_USER );
+	await page.locator( '#user_pass' ).fill( ADMIN_PASSWORD );
+
+	await Promise.all( [
+		page
+			.waitForNavigation( { waitUntil: 'domcontentloaded' } )
+			.catch( () => null ),
+		page.locator( '#wp-submit' ).click(),
+	] );
+}
+
+async function openEditor( page: Page, postId: number ) {
+	await page.goto(
+		`${ BASE_URL }/wp-admin/post.php?post=${ postId }&action=edit`,
+		{
+			waitUntil: 'domcontentloaded',
+		}
+	);
+	await page.waitForTimeout( 3000 );
+}
+
+async function selectParentBlock( page: Page ) {
+	const frame = page.frameLocator( 'iframe[name="editor-canvas"]' );
+
+	await frame.locator( '.wp-block-abtest-block-test__title' ).first().click();
+	await page.waitForTimeout( 1000 );
+
+	return frame;
+}
+
+async function openDebugPanel( page: Page ) {
+	const sidebar = page.locator( '.interface-interface-skeleton__sidebar' );
+	const toggle = sidebar
+		.locator( 'button' )
+		.filter( { hasText: /^Debug$/ } )
+		.first();
+	const expanded = await toggle.getAttribute( 'aria-expanded' );
+
+	if ( expanded !== 'true' ) {
+		await toggle.click();
+		await page.waitForTimeout( 500 );
+	}
+
+	return sidebar;
+}
+
+async function insertHeadingIntoVariant(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey,
+	content: string
+) {
+	await page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						blocks: {
+							createBlock: (
+								name: string,
+								attributes: Record< string, unknown >
+							) => unknown;
+						};
+						data: {
+							dispatch: ( store: string ) => {
+								insertBlocks: (
+									blocks: unknown,
+									index?: number,
+									rootClientId?: string
+								) => void;
+							};
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									clientId: string;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										clientId: string;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+
+			const editor = wpData.data.select( 'core/block-editor' );
+			const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if ( ! variantBlock ) {
+				throw new Error( 'Missing variant block' );
+			}
+
+			dispatcher.insertBlocks(
+				wpData.blocks.createBlock( 'core/heading', {
+					content: payload.content,
+				} ),
+				undefined,
+				variantBlock.clientId
+			);
+		},
+		{
+			blockInstanceId,
+			content,
+			variantKey,
+		}
+	);
+}
+
+async function removeHeadingFromVariant(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey
+) {
+	await page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						data: {
+							dispatch: ( store: string ) => {
+								removeBlocks: ( clientIds: string[] ) => void;
+							};
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									clientId: string;
+									name: string;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										clientId: string;
+										name: string;
+										innerBlocks?: Array< {
+											attributes: Record<
+												string,
+												unknown
+											>;
+											clientId: string;
+											name: string;
+										} >;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+
+			const editor = wpData.data.select( 'core/block-editor' );
+			const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if (
+				! variantBlock ||
+				! Array.isArray( variantBlock.innerBlocks )
+			) {
+				throw new Error( 'Missing variant block' );
+			}
+
+			const headingBlock = [ ...variantBlock.innerBlocks ]
+				.reverse()
+				.find( ( block ) => block.name === 'core/heading' );
+
+			if ( ! headingBlock ) {
+				throw new Error( 'Missing inserted heading block' );
+			}
+
+			dispatcher.removeBlocks( [ headingBlock.clientId ] );
+		},
+		{
+			blockInstanceId,
+			variantKey,
+		}
+	);
+}
+
+async function getVisibleVariantTexts( page: Page ) {
+	return page
+		.locator( '.wp-block-abtest-block-variant' )
+		.evaluateAll( ( elements ) =>
+			elements
+				.filter( ( element ) => {
+					const styles = window.getComputedStyle( element );
+					return (
+						styles.display !== 'none' &&
+						styles.visibility !== 'hidden' &&
+						( element as HTMLElement ).offsetParent !== null
+					);
+				} )
+				.map( ( element ) => element.textContent?.trim() ?? '' )
+		);
+}
+
+async function run() {
+	const statsPostId = createFixturePost(
+		'E2E Stats Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2einstats1',
+			emitDataLayer: true,
+			experimentId: 'e2e_stats_fixture',
+			experimentLabel: 'Stats Fixture',
+			stickyAssignment: true,
+			stickyScope: 'instance',
+			variantABody: 'Stats Variant A body',
+			variantBBody: 'Stats Variant B body',
+		} )
+	);
+	const nonStickyPostId = createFixturePost(
+		'E2E Non Sticky Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2enonsticky1',
+			experimentId: 'e2e_non_sticky_fixture',
+			experimentLabel: 'Non Sticky Fixture',
+			stickyAssignment: false,
+			stickyScope: 'instance',
+			variantABody: 'Non-sticky Variant A body',
+			variantBBody: 'Non-sticky Variant B body',
+		} )
+	);
+	const sharedScopePostOneId = createFixturePost(
+		'E2E Shared Scope One',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2esharedone1',
+			experimentId: 'e2e_shared_scope_fixture',
+			experimentLabel: 'Shared Scope Fixture',
+			stickyAssignment: true,
+			stickyScope: 'experiment',
+			variantABody: 'Shared Scope One Variant A body',
+			variantBBody: 'Shared Scope One Variant B body',
+		} )
+	);
+	const sharedScopePostTwoId = createFixturePost(
+		'E2E Shared Scope Two',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2esharedtwo1',
+			experimentId: 'e2e_shared_scope_fixture',
+			experimentLabel: 'Shared Scope Fixture',
+			stickyAssignment: true,
+			stickyScope: 'experiment',
+			variantABody: 'Shared Scope Two Variant A body',
+			variantBBody: 'Shared Scope Two Variant B body',
+		} )
+	);
+
+	const adminContext = await launchContext();
+	const adminPage = await adminContext.newPage();
+
+	await loginToWpAdmin( adminPage );
+	await openEditor( adminPage, statsPostId );
+
+	let frame = await selectParentBlock( adminPage );
+	await frame.locator( '.wp-block-abtest-block-test__tab' ).nth( 1 ).click();
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		(
+			await frame
+				.locator( '.wp-block-abtest-block-test__workspace-title' )
+				.innerText()
+		).includes( 'Variant B' ),
+		'Expected Variant B tab to become active in the editor'
+	);
+
+	const insertedHeading = 'Playwright smoke heading';
+	await insertHeadingIntoVariant(
+		adminPage,
+		'e2einstats1',
+		'b',
+		insertedHeading
+	);
+	await frame.locator( '.wp-block-abtest-block-test__tab' ).nth( 1 ).click();
+	await frame.getByText( insertedHeading ).waitFor( { state: 'visible' } );
+	await removeHeadingFromVariant( adminPage, 'e2einstats1', 'b' );
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		( await frame.getByText( insertedHeading ).count() ) === 0,
+		'Expected inserted heading block to be removable inside the variant container'
+	);
+
+	const frontContext = await launchContext( () => {
+		( window as typeof window & { dataLayer?: unknown[] } ).dataLayer = [];
+		window.IntersectionObserver = class InstantIntersectionObserver {
+			private readonly callback: IntersectionObserverCallback;
+
+			constructor( callback: IntersectionObserverCallback ) {
+				this.callback = callback;
+			}
+
+			disconnect() {}
+
+			observe( target: Element ) {
+				this.callback(
+					[
+						{
+							boundingClientRect: target.getBoundingClientRect(),
+							intersectionRatio: 1,
+							intersectionRect: target.getBoundingClientRect(),
+							isIntersecting: true,
+							rootBounds: null,
+							target,
+							time: performance.now(),
+						},
+					] as IntersectionObserverEntry[],
+					this as unknown as IntersectionObserver
+				);
+			}
+
+			takeRecords() {
+				return [];
+			}
+
+			unobserve() {}
+		} as typeof window.IntersectionObserver;
+	} );
+	const frontPage = await frontContext.newPage();
+
+	await frontPage.goto( `${ BASE_URL }/?p=${ statsPostId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await frontPage.waitForFunction(
+		() =>
+			Array.isArray(
+				( window as typeof window & { dataLayer?: unknown[] } )
+					.dataLayer
+			) &&
+			(
+				(
+					window as typeof window & {
+						dataLayer?: Array< { event?: string } >;
+					}
+				 ).dataLayer ?? []
+			).some( ( entry ) => entry.event === 'abtest_stats' ),
+		undefined,
+		{ timeout: 10000 }
+	);
+
+	const visibleVariantTexts = await getVisibleVariantTexts( frontPage );
+	assert(
+		visibleVariantTexts.length === 1,
+		'Expected exactly one active variant to be visible on the front end'
+	);
+
+	const dataLayer = ( await frontPage.evaluate(
+		() =>
+			( window as typeof window & { dataLayer?: unknown[] } ).dataLayer ??
+			[]
+	) ) as Array< Record< string, unknown > >;
+	const impressionEvent = dataLayer.find(
+		( entry ) => entry.event === 'abtest_impression'
+	);
+	const statsEvent = dataLayer.find(
+		( entry ) => entry.event === 'abtest_stats'
+	) as
+		| {
+				event: string;
+				stats: {
+					experiment: {
+						blockInstanceCount: number;
+						postCount: number;
+						variants: Array< { impressions: number } >;
+					};
+					instance: {
+						blockInstanceId: string;
+						postId: number;
+						variants: Array< { impressions: number } >;
+					};
+				};
+		  }
+		| undefined;
+
+	assert(
+		impressionEvent,
+		'Expected abtest_impression to be pushed to window.dataLayer'
+	);
+	assert(
+		! Object.prototype.hasOwnProperty.call( impressionEvent, 'stats' ),
+		'Expected abtest_impression payload to stay lightweight'
+	);
+	assert(
+		statsEvent,
+		'Expected abtest_stats to be pushed to window.dataLayer'
+	);
+	assert(
+		statsEvent.stats.instance.blockInstanceId === 'e2einstats1',
+		'Expected abtest_stats.instance to describe the current block instance'
+	);
+	assert(
+		statsEvent.stats.instance.postId === statsPostId,
+		'Expected abtest_stats.instance.postId to match the front-end fixture post'
+	);
+	assert(
+		typeof statsEvent.stats.experiment.postCount === 'number' &&
+			typeof statsEvent.stats.experiment.blockInstanceCount === 'number',
+		'Expected abtest_stats.experiment to include numeric aggregate metadata'
+	);
+	assert(
+		statsEvent.stats.instance.variants.reduce(
+			( total, variant ) => total + variant.impressions,
+			0
+		) === 1,
+		'Expected one counted impression in instance stats after the front-end visit'
+	);
+
+	const instanceStickyValue = await frontPage.evaluate(
+		( key ) => window.localStorage.getItem( key ),
+		`abtest:${ statsPostId }:e2einstats1`
+	);
+	assert(
+		instanceStickyValue === 'a' || instanceStickyValue === 'b',
+		'Expected instance sticky assignment to be stored in localStorage'
+	);
+
+	const nonStickyContext = await launchContext();
+	const nonStickyPage = await nonStickyContext.newPage();
+
+	await nonStickyPage.goto( `${ BASE_URL }/?p=${ nonStickyPostId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await nonStickyPage.waitForTimeout( 2500 );
+	const nonStickyValue = await nonStickyPage.evaluate(
+		( key ) => window.localStorage.getItem( key ),
+		`abtest:${ nonStickyPostId }:e2enonsticky1`
+	);
+	assert(
+		nonStickyValue === null,
+		'Expected stickyAssignment=false to avoid storing a sticky localStorage key'
+	);
+
+	const sharedContext = await launchContext();
+	const sharedPage = await sharedContext.newPage();
+
+	await sharedPage.goto( `${ BASE_URL }/?p=${ sharedScopePostOneId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await sharedPage.waitForTimeout( 1000 );
+	const sharedKey = 'abtest-exp:e2e_shared_scope_fixture';
+	await sharedPage.evaluate( ( key ) => {
+		window.localStorage.setItem( key, 'b' );
+	}, sharedKey );
+	await sharedPage.goto( `${ BASE_URL }/?p=${ sharedScopePostTwoId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await sharedPage.waitForTimeout( 2500 );
+	const sharedVisibleTexts = await getVisibleVariantTexts( sharedPage );
+	assert(
+		sharedVisibleTexts.length === 1 &&
+			sharedVisibleTexts[ 0 ].includes(
+				'Shared Scope Two Variant B body'
+			),
+		'Expected experiment-scope sticky assignment to carry across posts with the same experimentId'
+	);
+
+	await openEditor( adminPage, statsPostId );
+	frame = await selectParentBlock( adminPage );
+	const sidebar = await openDebugPanel( adminPage );
+	await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
+	await adminPage.waitForTimeout( 1200 );
+
+	const debugText = await sidebar.innerText();
+	assert(
+		debugText.includes( 'This block' ) &&
+			debugText.includes( 'This experiment' ),
+		'Expected Debug panel to show both block and experiment stats cards'
+	);
+	assert(
+		debugText.includes( '1 impressions' ),
+		'Expected Debug panel to reflect the counted front-end impression'
+	);
+	assert(
+		debugText.includes( 'Assignment source in traffic mode:' ),
+		'Expected Debug panel to show the current assignment source text'
+	);
+
+	writeLog( 'Playwright smoke passed.' );
+}
+
+async function main() {
+	try {
+		await run();
+	} finally {
+		for ( const browser of browsers.splice( 0 ) ) {
+			await browser.close().catch( () => undefined );
+		}
+
+		for ( const postId of createdPostIds.splice( 0 ) ) {
+			try {
+				runWp( [ 'post', 'delete', String( postId ), '--force' ] );
+			} catch ( error ) {
+				writeWarning(
+					`Failed to delete fixture post ${ postId }: ${ String(
+						error
+					) }`
+				);
+			}
+		}
+	}
+}
+
+void main();

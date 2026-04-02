@@ -100,6 +100,10 @@ function ab_test_block_generate_experiment_id( $block_instance_id ) {
 	return 'experiment_' . substr( sanitize_key( $block_instance_id ), 0, 8 );
 }
 
+function ab_test_block_generate_experiment_label() {
+	return 'Experiment';
+}
+
 function ab_test_block_sanitize_variant_key( $variant_key, $variant_count ) {
 	$variant_key = is_string( $variant_key ) ? strtolower( trim( $variant_key ) ) : '';
 
@@ -114,9 +118,15 @@ function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 	$block_instance_id = isset( $attributes['blockInstanceId'] ) ? sanitize_key( (string) $attributes['blockInstanceId'] ) : '';
 	$block_instance_id = strlen( $block_instance_id ) >= 8 ? $block_instance_id : ab_test_block_generate_block_instance_id();
 	$experiment_id     = isset( $attributes['experimentId'] ) ? sanitize_key( (string) $attributes['experimentId'] ) : '';
-	$experiment_id     = '' !== $experiment_id ? $experiment_id : ab_test_block_generate_experiment_id( $block_instance_id );
+	$experiment_id     = ( '' !== $experiment_id && 'experiment' !== $experiment_id )
+		? $experiment_id
+		: ab_test_block_generate_experiment_id( $block_instance_id );
+	$experiment_label  = isset( $attributes['experimentLabel'] ) ? sanitize_text_field( (string) $attributes['experimentLabel'] ) : '';
+	$experiment_label  = '' !== $experiment_label ? substr( $experiment_label, 0, 120 ) : ab_test_block_generate_experiment_label();
 	$preview_query_key = isset( $attributes['previewQueryKey'] ) ? sanitize_key( (string) $attributes['previewQueryKey'] ) : '';
 	$preview_query_key = '' !== $preview_query_key ? $preview_query_key : 'ab_' . $experiment_id;
+	$sticky_scope      = isset( $attributes['stickyScope'] ) ? (string) $attributes['stickyScope'] : 'instance';
+	$sticky_scope      = in_array( $sticky_scope, array( 'instance', 'experiment' ), true ) ? $sticky_scope : 'instance';
 	$winner_mode       = isset( $attributes['winnerMode'] ) ? (string) $attributes['winnerMode'] : 'off';
 	$winner_mode       = in_array( $winner_mode, array( 'off', 'manual', 'automatic' ), true ) ? $winner_mode : 'off';
 	$manual_winner     = ab_test_block_sanitize_variant_key( $attributes['manualWinner'] ?? null, $variant_count );
@@ -132,12 +142,14 @@ function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 		'emitKexpLayer'                => ! empty( $attributes['emitKexpLayer'] ),
 		'evaluationWindowDays'         => max( 1, min( 365, (int) ( $attributes['evaluationWindowDays'] ?? 14 ) ) ),
 		'experimentId'                 => $experiment_id,
+		'experimentLabel'              => $experiment_label,
 		'lockWinnerAfterSelection'     => ! empty( $attributes['lockWinnerAfterSelection'] ),
 		'manualWinner'                 => 'manual' === $winner_mode ? ( $manual_winner ?: $fallback_winner ) : null,
 		'minimumClicksPerVariant'      => max( 0, (int) ( $attributes['minimumClicksPerVariant'] ?? 1 ) ),
 		'minimumImpressionsPerVariant' => max( 0, (int) ( $attributes['minimumImpressionsPerVariant'] ?? 100 ) ),
 		'previewQueryKey'              => $preview_query_key,
 		'stickyAssignment'             => array_key_exists( 'stickyAssignment', $attributes ) ? ! empty( $attributes['stickyAssignment'] ) : true,
+		'stickyScope'                  => $sticky_scope,
 		'trackClicks'                  => array_key_exists( 'trackClicks', $attributes ) ? ! empty( $attributes['trackClicks'] ) : true,
 		'trackImpressions'             => array_key_exists( 'trackImpressions', $attributes ) ? ! empty( $attributes['trackImpressions'] ) : true,
 		'variantCount'                 => $variant_count,
@@ -460,6 +472,14 @@ function ab_test_block_can_write_publicly( WP_REST_Request $request ) {
 	return ab_test_block_verify_public_write_token( $token, $post_id, $block_instance_id, $experiment_id );
 }
 
+function ab_test_block_can_read_stats( WP_REST_Request $request ) {
+	$post_id = (int) $request->get_param( 'postId' );
+
+	return $post_id > 0
+		? current_user_can( 'edit_post', $post_id )
+		: current_user_can( 'edit_posts' );
+}
+
 function ab_test_block_record_event( $payload ) {
 	global $wpdb;
 
@@ -501,7 +521,17 @@ function ab_test_block_record_event( $payload ) {
 	return true;
 }
 
-function ab_test_block_get_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days ) {
+function ab_test_block_normalize_stats_updated_at( $updated_at ) {
+	if ( ! is_string( $updated_at ) || '' === $updated_at ) {
+		return null;
+	}
+
+	$timestamp = strtotime( $updated_at . ' UTC' );
+
+	return false === $timestamp ? null : (int) $timestamp;
+}
+
+function ab_test_block_get_instance_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days ) {
 	global $wpdb;
 
 	$table_name = ab_test_block_get_stats_table_name();
@@ -548,6 +578,190 @@ function ab_test_block_get_variant_aggregates( $post_id, $block_instance_id, $va
 	return $aggregates;
 }
 
+function ab_test_block_get_instance_stats_summary( $post_id, $block_instance_id, $window_days ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	$row        = $wpdb->get_row(
+		$wpdb->prepare(
+			"SELECT MAX(updated_at) AS updated_at
+			FROM {$table_name}
+			WHERE post_id = %d
+				AND block_instance_id = %s
+				AND event_date >= %s",
+			(int) $post_id,
+			(string) $block_instance_id,
+			$cutoff
+		),
+		ARRAY_A
+	);
+
+	return array(
+		'updatedAt' => ab_test_block_normalize_stats_updated_at( $row['updated_at'] ?? null ),
+	);
+}
+
+function ab_test_block_get_experiment_variant_aggregates( $experiment_id, $variant_count, $window_days ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	$rows       = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT
+				variant_key,
+				SUM( CASE WHEN event_type = 'impression' THEN event_count ELSE 0 END ) AS impressions,
+				SUM( CASE WHEN event_type = 'click' THEN event_count ELSE 0 END ) AS clicks
+			FROM {$table_name}
+			WHERE experiment_id = %s
+				AND event_date >= %s
+			GROUP BY variant_key",
+			(string) $experiment_id,
+			$cutoff
+		),
+		ARRAY_A
+	);
+	$lookup     = array();
+
+	foreach ( $rows as $row ) {
+		$lookup[ $row['variant_key'] ] = array(
+			'clicks'      => max( 0, (int) $row['clicks'] ),
+			'impressions' => max( 0, (int) $row['impressions'] ),
+		);
+	}
+
+	$aggregates = array();
+	foreach ( ab_test_block_variant_keys( $variant_count ) as $variant_key ) {
+		$impressions = isset( $lookup[ $variant_key ] ) ? $lookup[ $variant_key ]['impressions'] : 0;
+		$clicks      = isset( $lookup[ $variant_key ] ) ? $lookup[ $variant_key ]['clicks'] : 0;
+
+		$aggregates[] = array(
+			'clicks'      => $clicks,
+			'ctr'         => $impressions > 0 ? (float) ( $clicks / $impressions ) : 0,
+			'impressions' => $impressions,
+			'variant'     => $variant_key,
+		);
+	}
+
+	return $aggregates;
+}
+
+function ab_test_block_get_experiment_stats_summary( $experiment_id, $window_days ) {
+	global $wpdb;
+
+	$table_name = ab_test_block_get_stats_table_name();
+	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	$row        = $wpdb->get_row(
+		$wpdb->prepare(
+			"SELECT
+				COUNT(DISTINCT post_id) AS post_count,
+				COUNT(DISTINCT CONCAT(post_id, ':', block_instance_id)) AS block_instance_count,
+				MAX(updated_at) AS updated_at
+			FROM {$table_name}
+			WHERE experiment_id = %s
+				AND event_date >= %s",
+			(string) $experiment_id,
+			$cutoff
+		),
+		ARRAY_A
+	);
+
+	return array(
+		'blockInstanceCount' => max( 0, (int) ( $row['block_instance_count'] ?? 0 ) ),
+		'postCount'          => max( 0, (int) ( $row['post_count'] ?? 0 ) ),
+		'updatedAt'          => ab_test_block_normalize_stats_updated_at( $row['updated_at'] ?? null ),
+	);
+}
+
+function ab_test_block_build_stats_scope_snapshot( $experiment_id, $variant_count, $aggregates, $summary, $extra = array() ) {
+	$snapshot = array(
+		'experimentId' => (string) $experiment_id,
+		'variantCount' => (int) $variant_count,
+		'variants'     => array_map(
+			static function( $aggregate ) {
+				return array(
+					'clicks'      => (int) $aggregate['clicks'],
+					'ctr'         => (float) $aggregate['ctr'],
+					'impressions' => (int) $aggregate['impressions'],
+					'variantKey'  => (string) $aggregate['variant'],
+				);
+			},
+			$aggregates
+		),
+	);
+
+	if ( isset( $extra['postId'] ) ) {
+		$snapshot['postId'] = (int) $extra['postId'];
+	}
+
+	if ( isset( $extra['blockInstanceId'] ) ) {
+		$snapshot['blockInstanceId'] = (string) $extra['blockInstanceId'];
+	}
+
+	if ( isset( $summary['postCount'] ) ) {
+		$snapshot['postCount'] = (int) $summary['postCount'];
+	}
+
+	if ( isset( $summary['blockInstanceCount'] ) ) {
+		$snapshot['blockInstanceCount'] = (int) $summary['blockInstanceCount'];
+	}
+
+	if ( ! empty( $summary['updatedAt'] ) ) {
+		$snapshot['updatedAt'] = (int) $summary['updatedAt'];
+	}
+
+	return $snapshot;
+}
+
+function ab_test_block_get_stats_snapshot( $post_id, $block_instance_id, $experiment_id, $variant_count, $window_days, $instance_aggregates = null ) {
+	$instance_aggregates = is_array( $instance_aggregates )
+		? $instance_aggregates
+		: ab_test_block_get_instance_variant_aggregates(
+			(int) $post_id,
+			(string) $block_instance_id,
+			(int) $variant_count,
+			(int) $window_days
+		);
+	$instance_summary   = ab_test_block_get_instance_stats_summary(
+		(int) $post_id,
+		(string) $block_instance_id,
+		(int) $window_days
+	);
+	$experiment_aggregates = ab_test_block_get_experiment_variant_aggregates(
+		(string) $experiment_id,
+		(int) $variant_count,
+		(int) $window_days
+	);
+	$experiment_summary = ab_test_block_get_experiment_stats_summary(
+		(string) $experiment_id,
+		(int) $window_days
+	);
+
+	return array(
+		'experiment' => ab_test_block_build_stats_scope_snapshot(
+			(string) $experiment_id,
+			(int) $variant_count,
+			$experiment_aggregates,
+			$experiment_summary
+		),
+		'instance'   => ab_test_block_build_stats_scope_snapshot(
+			(string) $experiment_id,
+			(int) $variant_count,
+			$instance_aggregates,
+			$instance_summary,
+			array(
+				'blockInstanceId' => (string) $block_instance_id,
+				'postId'          => (int) $post_id,
+			)
+		),
+	);
+}
+
+function ab_test_block_get_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days ) {
+	return ab_test_block_get_instance_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days );
+}
+
 function ab_test_block_evaluate_winner( $aggregates, $payload ) {
 	$candidates = array_values(
 		array_filter(
@@ -581,7 +795,7 @@ function ab_test_block_evaluate_winner( $aggregates, $payload ) {
 	return $candidates[0]['ctr'] > $candidates[1]['ctr'] ? $candidates[0]['variant'] : null;
 }
 
-function ab_test_block_build_record_event_response( $payload, $counted ) {
+function ab_test_block_build_record_event_response( $payload, $counted, $stats ) {
 	return array(
 		'accepted'        => true,
 		'blockInstanceId' => (string) $payload['blockInstanceId'],
@@ -589,15 +803,17 @@ function ab_test_block_build_record_event_response( $payload, $counted ) {
 		'eventType'       => (string) $payload['eventType'],
 		'experimentId'    => (string) $payload['experimentId'],
 		'postId'          => (int) $payload['postId'],
+		'stats'           => $stats,
 		'variant'         => (string) $payload['variant'],
 	);
 }
 
-function ab_test_block_build_reevaluate_response( $state, $aggregates ) {
+function ab_test_block_build_reevaluate_response( $state, $aggregates, $stats ) {
 	$response = array(
 		'evaluatedAt' => (int) ( $state['evaluatedAt'] ?? time() ),
 		'metric'      => 'ctr',
 		'status'      => (string) $state['status'],
+		'stats'       => $stats,
 		'variants'    => $aggregates,
 	);
 
@@ -619,7 +835,19 @@ function ab_test_block_handle_record_event( WP_REST_Request $request ) {
 	}
 
 	if ( ! empty( $payload['preview'] ) ) {
-		return rest_ensure_response( ab_test_block_build_record_event_response( $payload, false ) );
+		return rest_ensure_response(
+			ab_test_block_build_record_event_response(
+				$payload,
+				false,
+				ab_test_block_get_stats_snapshot(
+					(int) $payload['postId'],
+					(string) $payload['blockInstanceId'],
+					(string) $payload['experimentId'],
+					(int) $payload['variantCount'],
+					(int) $payload['evaluationWindowDays']
+				)
+			)
+		);
 	}
 
 	$recorded = ab_test_block_record_event( $payload );
@@ -627,7 +855,15 @@ function ab_test_block_handle_record_event( WP_REST_Request $request ) {
 		return $recorded;
 	}
 
-	return rest_ensure_response( ab_test_block_build_record_event_response( $payload, true ) );
+	$stats = ab_test_block_get_stats_snapshot(
+		(int) $payload['postId'],
+		(string) $payload['blockInstanceId'],
+		(string) $payload['experimentId'],
+		(int) $payload['variantCount'],
+		(int) $payload['evaluationWindowDays']
+	);
+
+	return rest_ensure_response( ab_test_block_build_record_event_response( $payload, true, $stats ) );
 }
 
 function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
@@ -654,8 +890,17 @@ function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
 		'winner-locked' === $existing_state['status'] &&
 		! empty( $existing_state['winner'] )
 	) {
+		$stats = ab_test_block_get_stats_snapshot(
+			(int) $payload['postId'],
+			(string) $payload['blockInstanceId'],
+			(string) $payload['experimentId'],
+			(int) $payload['variantCount'],
+			(int) $payload['evaluationWindowDays'],
+			$aggregates
+		);
+
 		return rest_ensure_response(
-			ab_test_block_build_reevaluate_response( $existing_state, $aggregates )
+			ab_test_block_build_reevaluate_response( $existing_state, $aggregates, $stats )
 		);
 	}
 
@@ -694,9 +939,37 @@ function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
 		(int) $payload['variantCount'],
 		(int) $payload['evaluationWindowDays']
 	);
+	$stats        = ab_test_block_get_stats_snapshot(
+		(int) $payload['postId'],
+		(string) $payload['blockInstanceId'],
+		(string) $payload['experimentId'],
+		(int) $payload['variantCount'],
+		(int) $payload['evaluationWindowDays'],
+		$aggregates
+	);
 
 	return rest_ensure_response(
-		ab_test_block_build_reevaluate_response( $stored_state, $aggregates )
+		ab_test_block_build_reevaluate_response( $stored_state, $aggregates, $stats )
+	);
+}
+
+function ab_test_block_handle_stats( WP_REST_Request $request ) {
+	$query_params = $request->get_query_params();
+	$query_params = is_array( $query_params ) ? $query_params : array();
+	unset( $query_params['rest_route'] );
+	$payload = ab_test_block_validate_and_sanitize_request( $query_params, 'stats-request', 'query' );
+	if ( is_wp_error( $payload ) ) {
+		return $payload;
+	}
+
+	return rest_ensure_response(
+		ab_test_block_get_stats_snapshot(
+			(int) $payload['postId'],
+			(string) $payload['blockInstanceId'],
+			(string) $payload['experimentId'],
+			(int) $payload['variantCount'],
+			(int) $payload['evaluationWindowDays']
+		)
 	);
 }
 
@@ -718,6 +991,16 @@ function ab_test_block_register_routes() {
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => 'ab_test_block_handle_reevaluate',
 			'permission_callback' => 'ab_test_block_can_write_publicly',
+		)
+	);
+
+	register_rest_route(
+		'abtest-block/v1',
+		'/stats',
+		array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => 'ab_test_block_handle_stats',
+			'permission_callback' => 'ab_test_block_can_read_stats',
 		)
 	);
 }

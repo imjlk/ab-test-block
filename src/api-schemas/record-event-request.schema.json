@@ -21,6 +21,13 @@
 			"minLength": 1,
 			"maxLength": 512
 		},
+		"variantCount": {
+			"enum": [
+				2,
+				3
+			],
+			"type": "number"
+		},
 		"variant": {
 			"enum": [
 				"a",
@@ -35,6 +42,12 @@
 				"click"
 			],
 			"type": "string"
+		},
+		"evaluationWindowDays": {
+			"type": "number",
+			"x-typeTag": "uint32",
+			"minimum": 1,
+			"maximum": 365
 		},
 		"preview": {
 			"default": false,
@@ -61,8 +74,10 @@
 		"postId",
 		"blockInstanceId",
 		"experimentId",
+		"variantCount",
 		"variant",
 		"eventType",
+		"evaluationWindowDays",
 		"timestamp"
 	],
 	"title": "AbTestBlockRecordEventRequest",

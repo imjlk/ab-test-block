@@ -48,47 +48,164 @@
 		font-size: 13px;
 	}
 
-	&__tabs {
-		display: flex;
-		flex-wrap: wrap;
+	&__sidebar-note {
+		margin: 10px 0 0;
+		color: #5c5441;
+		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	&__stats-actions {
+		margin: 12px 0;
+	}
+
+	&__stats-grid {
+		display: grid;
+		gap: 12px;
+		margin: 14px 0 10px;
+	}
+
+	&__stats-card {
+		padding: 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(112, 82, 18, 0.12);
+		background: rgba(255, 255, 255, 0.7);
+	}
+
+	&__stats-head {
+		display: grid;
+		gap: 4px;
+		margin-bottom: 10px;
+	}
+
+	&__stats-title {
+		margin: 0;
+		font-size: 14px;
+		line-height: 1.3;
+	}
+
+	&__stats-meta {
+		margin: 0;
+		color: #6d6554;
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	&__stats-rows {
+		display: grid;
 		gap: 8px;
+	}
+
+	&__stats-row {
+		display: grid;
+		gap: 2px;
+	}
+
+	&__stats-key {
+		font-size: 12px;
+		font-weight: 600;
+		color: #2f2a22;
+	}
+
+	&__stats-value {
+		font-size: 12px;
+		line-height: 1.45;
+		color: #5c5441;
+	}
+
+	&__workspace {
 		margin: 0 0 16px;
+		padding: 14px 16px;
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.72);
+		border: 1px solid rgba(112, 82, 18, 0.12);
+	}
+
+	&__tabs {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		justify-content: center;
+		margin: 0 0 12px;
+		padding: 6px;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.78);
+		border: 1px solid rgba(28, 102, 145, 0.14);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 	}
 
 	&__tab {
 
 		&.components-button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 44px;
+			height: 40px;
+			padding-inline: 14px;
 			border-radius: 999px;
+			font-size: 15px;
+			font-weight: 500;
+			line-height: 1;
+			box-shadow: none;
+			transition:
+				background-color 120ms ease,
+				border-color 120ms ease,
+				color 120ms ease;
+		}
+
+		&.components-button.is-primary {
+			background: #1b7fb8;
+			border: 1px solid #1b7fb8;
+			color: #fff;
+		}
+
+		&.components-button.is-secondary {
+			background: transparent;
+			border: 1px solid rgba(27, 127, 184, 0.48);
+			color: #1b7fb8;
+		}
+
+		&.components-button.is-secondary:hover {
+			background: rgba(27, 127, 184, 0.08);
+			border-color: rgba(27, 127, 184, 0.62);
+			color: #166a99;
 		}
 	}
 
-	&__tab-action {
-
-		&.components-button {
-			border-radius: 999px;
-		}
+	&__workspace-meta {
+		display: grid;
+		gap: 6px;
 	}
 
-	&__preview-controls {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-bottom: 12px;
+	&__workspace-eyebrow {
+		margin: 0;
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: #8f6c2e;
 	}
 
-	&__preview-button {
+	&__workspace-title {
+		margin: 0;
+		font-size: 20px;
+		line-height: 1.2;
+	}
 
-		&.components-button {
-			border-radius: 999px;
-		}
+	&__workspace-copy {
+		margin: 0;
+		color: #5c5441;
+		font-size: 13px;
+		line-height: 1.5;
 	}
 
 	&__stage {
-		margin-top: 18px;
-		padding: 18px;
+		margin-top: 16px;
+		padding: 20px;
 		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.78);
-		border: 1px solid rgba(112, 82, 18, 0.18);
+		background: rgba(255, 255, 255, 0.86);
+		border: 1px solid rgba(112, 82, 18, 0.14);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 	}
 
 	&__panel-actions {

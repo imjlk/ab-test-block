@@ -17,10 +17,19 @@
 
 	&__runtime-variants > [data-abtest-variant] {
 		margin: 0;
+		display: none;
+	}
+
+	&:not([data-abtest-ready="true"]) &__runtime-variants > [data-abtest-variant]:first-child {
+		display: block;
 	}
 }
 
 .wp-block-abtest-block-variant {
+
+	&[data-abtest-active="true"] {
+		display: block;
+	}
 
 	&[data-abtest-active="false"] {
 		display: none;

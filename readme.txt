@@ -22,11 +22,13 @@ Features included in this version:
 * A/B and A/B/C authoring flows
 * Weighted traffic allocation with normalize and equalize controls
 * Query-string preview overrides
-* Sticky visitor assignment
+* Sticky visitor assignment using browser localStorage
+* Optional shared-experiment sticky scope by Experiment ID
 * Manual winner selection
 * CTR-based automatic winner reevaluation
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
+* Editor Debug stats for both the current block and shared experiment
 
 Not included:
 
@@ -61,6 +63,10 @@ Add the Additional CSS class `abtest-cta` to the button or link you want to coun
 = When is an impression counted? =
 
 An impression is counted only when the active variant stays at least 50% visible in the viewport for 1 second.
+
+= How is sticky assignment stored? =
+
+This version uses browser localStorage only. By default the sticky key is scoped to the current page and block instance. You can optionally switch sticky scope to the shared Experiment ID so the same browser sees a consistent variant across multiple pages.
 
 == Changelog ==
 

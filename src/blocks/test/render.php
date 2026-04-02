@@ -43,11 +43,17 @@ $context     = array(
 	'postId'                       => $post_id,
 	'previewQueryKey'              => (string) $attributes['previewQueryKey'],
 	'stickyAssignment'             => ! empty( $attributes['stickyAssignment'] ),
-	'stickyStorageKey'             => sprintf(
-		'abtest:%d:%s',
-		$post_id,
-		(string) $attributes['blockInstanceId']
-	),
+	'stickyScope'                  => (string) $attributes['stickyScope'],
+	'stickyStorageKey'             => 'experiment' === (string) $attributes['stickyScope']
+		? sprintf(
+			'abtest-exp:%s',
+			(string) $attributes['experimentId']
+		)
+		: sprintf(
+			'abtest:%d:%s',
+			$post_id,
+			(string) $attributes['blockInstanceId']
+		),
 	'trackClicks'                  => ! empty( $attributes['trackClicks'] ),
 	'trackImpressions'             => ! empty( $attributes['trackImpressions'] ),
 	'variantCount'                 => (int) $attributes['variantCount'],
@@ -87,10 +93,10 @@ if ( $post_id > 0 && function_exists( 'ab_test_block_create_public_write_token' 
 
 $wrapper_attributes = get_block_wrapper_attributes(
 	array(
-		'data-wp-context'      => wp_json_encode( $context ),
-		'data-wp-interactive'  => 'abtest-block',
-		'data-wp-init'         => 'callbacks.init',
-		'data-wp-run--mounted' => 'callbacks.mounted',
+		'data-wp-context'            => wp_json_encode( $context ),
+		'data-wp-interactive'        => 'abtest-block',
+		'data-wp-init'               => 'callbacks.init',
+		'data-wp-init---mounted'     => 'callbacks.mounted',
 	)
 );
 ?>

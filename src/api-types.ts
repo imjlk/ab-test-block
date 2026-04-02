@@ -4,6 +4,7 @@ import type {
 	AssignmentSource,
 	AutomaticMetric,
 	EventType,
+	AbTestStatsResponse,
 	VariantCount,
 	VariantKey,
 	WinnerLifecycleState,
@@ -31,8 +32,13 @@ export interface AbTestBlockRecordEventRequest {
 	blockInstanceId: string & tags.MinLength< 8 > & tags.MaxLength< 64 >;
 	experimentId: string & tags.MinLength< 1 > & tags.MaxLength< 191 >;
 	publicWriteToken?: string & tags.MinLength< 1 > & tags.MaxLength< 512 >;
+	variantCount: VariantCount;
 	variant: VariantKey;
 	eventType: EventType;
+	evaluationWindowDays: number &
+		tags.Minimum< 1 > &
+		tags.Maximum< 365 > &
+		tags.Type< 'uint32' >;
 	preview?: boolean & tags.Default< false >;
 	source?: AssignmentSource;
 	timestamp: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
@@ -46,6 +52,7 @@ export interface AbTestBlockRecordEventResponse {
 	experimentId: string & tags.MinLength< 1 > & tags.MaxLength< 191 >;
 	variant: VariantKey;
 	eventType: EventType;
+	stats: AbTestBlockStatsResponse;
 }
 
 export interface AbTestBlockReevaluateRequest {
@@ -66,6 +73,19 @@ export interface AbTestBlockReevaluateRequest {
 	lockWinnerAfterSelection: boolean;
 }
 
+export interface AbTestBlockStatsRequest {
+	postId: number & tags.Type< 'uint32' >;
+	blockInstanceId: string & tags.MinLength< 8 > & tags.MaxLength< 64 >;
+	experimentId: string & tags.MinLength< 1 > & tags.MaxLength< 191 >;
+	variantCount: VariantCount;
+	evaluationWindowDays: number &
+		tags.Minimum< 1 > &
+		tags.Maximum< 365 > &
+		tags.Type< 'uint32' >;
+}
+
+export type AbTestBlockStatsResponse = AbTestStatsResponse;
+
 export interface AbTestBlockReevaluateResponse {
 	status: WinnerLifecycleState;
 	metric: AutomaticMetric;
@@ -73,4 +93,5 @@ export interface AbTestBlockReevaluateResponse {
 	evaluatedAt: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
 	lockedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
 	variants: AbTestBlockVariantAggregate[];
+	stats: AbTestBlockStatsResponse;
 }

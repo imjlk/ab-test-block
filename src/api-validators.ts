@@ -6,6 +6,8 @@ import type {
 	AbTestBlockRecordEventResponse,
 	AbTestBlockReevaluateRequest,
 	AbTestBlockReevaluateResponse,
+	AbTestBlockStatsRequest,
+	AbTestBlockStatsResponse,
 } from './api-types';
 
 const validateRecordEventRequest =
@@ -16,6 +18,9 @@ const validateReevaluateRequest =
 	typia.createValidate< AbTestBlockReevaluateRequest >();
 const validateReevaluateResponse =
 	typia.createValidate< AbTestBlockReevaluateResponse >();
+const validateStatsRequest = typia.createValidate< AbTestBlockStatsRequest >();
+const validateStatsResponse =
+	typia.createValidate< AbTestBlockStatsResponse >();
 
 export const apiValidators = {
 	recordEventRequest: (
@@ -34,4 +39,12 @@ export const apiValidators = {
 		input: unknown
 	): ValidationResult< AbTestBlockReevaluateResponse > =>
 		toValidationResult( validateReevaluateResponse( input ) ),
+	statsRequest: (
+		input: unknown
+	): ValidationResult< AbTestBlockStatsRequest > =>
+		toValidationResult( validateStatsRequest( input ) ),
+	statsResponse: (
+		input: unknown
+	): ValidationResult< AbTestBlockStatsResponse > =>
+		toValidationResult( validateStatsResponse( input ) ),
 };

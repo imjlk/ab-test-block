@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const DEFAULT_BRANCH = 'main';
 const DEFAULT_LANDING_PAGE = '/wp-admin/post.php?post=1001&action=edit';
 const DEFAULT_PHP_VERSION = '8.3';
-const DEFAULT_WP_VERSION = '6.8';
+const DEFAULT_WP_VERSION = 'latest';
 const BLUEPRINT_DIR = '.wordpress-org/blueprints';
 const WORDPRESS_ORG_TEMPLATE = `${ BLUEPRINT_DIR }/blueprint.template.json`;
 const GITHUB_TEMPLATE = `${ BLUEPRINT_DIR }/github-blueprint.template.json`;

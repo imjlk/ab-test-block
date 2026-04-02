@@ -7,14 +7,17 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   One top-level `A/B Test` block plus an internal `Variant` child block
 -   A/B or A/B/C authoring with fixed variant slots
 -   Weighted delivery, sticky assignment, query-string preview overrides
+-   Sticky assignment scoped either to this page/block or to a shared experiment ID
 -   Manual winner and CTR-based automatic winner
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
+-   Server stats surfaced back into the editor Debug panel
 
 ## Tracking Semantics
 
 -   `impression` means the active variant stays at least 50% visible for 1 second.
 -   `click` means the first primary CTA click for the block on the current page.
+-   `abtest_stats` / `abtest:stats` carry saved aggregate stats after counted events.
 -   Mark a CTA explicitly with the Additional CSS class `abtest-cta`.
 -   For custom markup, use the `data-abtest-cta` attribute instead.
 -   If no CTA marker exists inside the active variant, links and buttons fall back automatically.
@@ -23,7 +26,16 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 
 -   A single block instance is identified by `postId + blockInstanceId`.
 -   `experimentId` is the logical experiment key and may be reused across multiple posts or pages.
+-   The default sticky identity is browser `localStorage`, not cookies or logged-in user identity.
+-   Default sticky scope is the current page/block instance.
+-   Optional shared-experiment sticky uses the key `abtest-exp:{experimentId}`.
 -   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
+
+## REST and Debug Surface
+
+-   `GET /wp-json/abtest-block/v1/stats` returns both `instance` and `experiment` snapshots.
+-   `POST /wp-json/abtest-block/v1/event` and `POST /wp-json/abtest-block/v1/reevaluate` both return the latest stats snapshot.
+-   The editor Debug panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, and last update time.
 
 ## WordPress Playground
 
@@ -104,4 +116,4 @@ bun run wordpress-org:copy-assets -- --target=/path/to/plugin-svn/assets
 
 `bun run sync-types` generates block metadata and PHP validators for the parent and child blocks.
 
-`bun run sync-rest` generates JSON Schema and OpenAPI files for the runtime event and reevaluation endpoints.
+`bun run sync-rest` generates JSON Schema and OpenAPI files for the runtime event, stats, and reevaluation endpoints.

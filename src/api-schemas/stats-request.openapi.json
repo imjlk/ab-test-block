@@ -1,0 +1,54 @@
+{
+	"components": {
+		"schemas": {
+			"AbTestBlockStatsRequest": {
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"additionalProperties": false,
+				"properties": {
+					"postId": {
+						"type": "number",
+						"x-typeTag": "uint32"
+					},
+					"blockInstanceId": {
+						"type": "string",
+						"minLength": 8,
+						"maxLength": 64
+					},
+					"experimentId": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 191
+					},
+					"variantCount": {
+						"enum": [
+							2,
+							3
+						],
+						"type": "number"
+					},
+					"evaluationWindowDays": {
+						"type": "number",
+						"x-typeTag": "uint32",
+						"minimum": 1,
+						"maximum": 365
+					}
+				},
+				"required": [
+					"postId",
+					"blockInstanceId",
+					"experimentId",
+					"variantCount",
+					"evaluationWindowDays"
+				],
+				"title": "AbTestBlockStatsRequest",
+				"type": "object"
+			}
+		}
+	},
+	"info": {
+		"title": "AbTestBlockStatsRequest",
+		"version": "1.0.0"
+	},
+	"openapi": "3.1.0",
+	"paths": {}
+}

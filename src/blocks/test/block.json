@@ -32,6 +32,10 @@
 			"type": "string",
 			"default": "experiment"
 		},
+		"experimentLabel": {
+			"type": "string",
+			"default": "Experiment"
+		},
 		"variantCount": {
 			"type": "number",
 			"default": 2,
@@ -50,6 +54,14 @@
 		"stickyAssignment": {
 			"type": "boolean",
 			"default": true
+		},
+		"stickyScope": {
+			"type": "string",
+			"default": "instance",
+			"enum": [
+				"instance",
+				"experiment"
+			]
 		},
 		"winnerMode": {
 			"type": "string",
@@ -122,6 +134,7 @@
 	"example": {
 		"attributes": {
 			"experimentId": "experiment",
+			"experimentLabel": "Experiment",
 			"variantCount": 2,
 			"weights": {
 				"a": 0,
@@ -130,6 +143,7 @@
 			},
 			"previewQueryKey": "abtest",
 			"stickyAssignment": true,
+			"stickyScope": "instance",
 			"winnerMode": "off",
 			"manualWinner": "a",
 			"automaticMetric": "ctr",

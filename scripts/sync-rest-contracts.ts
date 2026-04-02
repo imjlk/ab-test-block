@@ -18,6 +18,14 @@ const CONTRACTS = [
 		baseName: 'reevaluate-response',
 		sourceTypeName: 'AbTestBlockReevaluateResponse',
 	},
+	{
+		baseName: 'stats-request',
+		sourceTypeName: 'AbTestBlockStatsRequest',
+	},
+	{
+		baseName: 'stats-response',
+		sourceTypeName: 'AbTestBlockStatsResponse',
+	},
 ] as const;
 
 async function main() {
