@@ -886,17 +886,29 @@ async function runEditorSmoke( statsPostId: number ) {
 	await adminPage.waitForTimeout( 1200 );
 
 	const debugText = await sidebar.innerText();
+	const normalizedDebugText = debugText.replace( /\s+/g, ' ' );
+	const hasAssignmentSourceSummary = [
+		'Weighted-random',
+		'Sticky (this block)',
+		'Sticky (shared experiment)',
+		'Manual winner',
+		'Locked automatic winner',
+		'Automatic winner candidate',
+		'No resolved winner yet',
+	].some( ( value ) => normalizedDebugText.includes( value ) );
 	assert(
-		debugText.includes( 'This block' ) &&
-			debugText.includes( 'This experiment' ),
+		normalizedDebugText.includes( 'This block' ) &&
+			normalizedDebugText.includes( 'This experiment' ),
 		'Expected Debug panel to show both block and experiment stats cards'
 	);
 	assert(
-		debugText.includes( '1 impressions' ),
+		normalizedDebugText.includes( '1 impressions' ),
 		'Expected Debug panel to reflect the counted front-end impression'
 	);
 	assert(
-		debugText.includes( 'Assignment source in traffic mode:' ),
+		( normalizedDebugText.includes( 'Current state' ) ||
+			normalizedDebugText.includes( 'Preview mode' ) ) &&
+			hasAssignmentSourceSummary,
 		'Expected Debug panel to show the current assignment source text'
 	);
 

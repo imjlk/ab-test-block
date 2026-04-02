@@ -613,6 +613,10 @@ export default function Edit( {
 	const latestStatsUpdatedText = latestStatsUpdatedAt
 		? new Date( latestStatsUpdatedAt * 1000 ).toLocaleString()
 		: __( 'No tracked events yet', 'ab-test-block' );
+	const previewModeText =
+		previewMode === 'winner'
+			? __( 'Winner preview', 'ab-test-block' )
+			: __( 'Traffic mode', 'ab-test-block' );
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
@@ -797,17 +801,7 @@ export default function Edit( {
 													'ab-test-block'
 												) }
 											</dt>
-											<dd>
-												{ previewMode === 'winner'
-													? __(
-															'Winner preview',
-															'ab-test-block'
-													  )
-													: __(
-															'Traffic mode',
-															'ab-test-block'
-													  ) }
-											</dd>
+											<dd>{ previewModeText }</dd>
 										</div>
 										<div>
 											<dt>
@@ -1271,30 +1265,86 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					</Notice>
-					<div className="wp-block-abtest-block-test__stats-actions">
-						<Button
-							variant="secondary"
-							onClick={ refreshStats }
-							disabled={ isStatsLoading || postId <= 0 }
-						>
-							{ isStatsLoading
-								? __( 'Refreshing…', 'ab-test-block' )
-								: __( 'Refresh stats', 'ab-test-block' ) }
-						</Button>
-					</div>
-					{ statsError && (
-						<Notice status="warning" isDismissible={ false }>
-							{ statsError }
-						</Notice>
-					) }
-					{ ! isStatsLoading && ! statsError && ! hasTrackedStats && (
-						<Notice status="info" isDismissible={ false }>
-							{ __(
-								'No tracked events yet. Once front-end impressions or clicks are counted, stats will appear here.',
-								'ab-test-block'
+					<div className="wp-block-abtest-block-test__debug-section">
+						<div className="wp-block-abtest-block-test__debug-section-head">
+							<h4 className="wp-block-abtest-block-test__debug-section-title">
+								{ __( 'Current state', 'ab-test-block' ) }
+							</h4>
+							<div className="wp-block-abtest-block-test__stats-actions">
+								<Button
+									variant="secondary"
+									onClick={ refreshStats }
+									disabled={ isStatsLoading || postId <= 0 }
+								>
+									{ isStatsLoading
+										? __( 'Refreshing…', 'ab-test-block' )
+										: __(
+												'Refresh stats',
+												'ab-test-block'
+										  ) }
+								</Button>
+							</div>
+						</div>
+						<dl className="wp-block-abtest-block-test__debug-summary">
+							<div>
+								<dt>
+									{ __( 'Preview mode', 'ab-test-block' ) }
+								</dt>
+								<dd>{ previewModeText }</dd>
+							</div>
+							<div>
+								<dt>
+									{ __(
+										'Assignment source',
+										'ab-test-block'
+									) }
+								</dt>
+								<dd>{ assignmentSourceText }</dd>
+							</div>
+							<div>
+								<dt>
+									{ __( 'Winner state', 'ab-test-block' ) }
+								</dt>
+								<dd>{ winnerStateText }</dd>
+							</div>
+							<div>
+								<dt>
+									{ __(
+										'Last stats update',
+										'ab-test-block'
+									) }
+								</dt>
+								<dd>{ latestStatsUpdatedText }</dd>
+							</div>
+						</dl>
+						{ previewMode === 'winner' &&
+							! winnerPreviewState.variant && (
+								<Notice
+									status="warning"
+									isDismissible={ false }
+								>
+									{ __(
+										'Winner preview is active, but no resolved winner is available yet.',
+										'ab-test-block'
+									) }
+								</Notice>
 							) }
-						</Notice>
-					) }
+						{ statsError && (
+							<Notice status="warning" isDismissible={ false }>
+								{ statsError }
+							</Notice>
+						) }
+						{ ! isStatsLoading &&
+							! statsError &&
+							! hasTrackedStats && (
+								<Notice status="info" isDismissible={ false }>
+									{ __(
+										'No tracked events yet. Once front-end impressions or clicks are counted, stats will appear here.',
+										'ab-test-block'
+									) }
+								</Notice>
+							) }
+					</div>
 					{ stats && (
 						<div className="wp-block-abtest-block-test__stats-grid">
 							{ renderStatsCard(
@@ -1307,48 +1357,50 @@ export default function Edit( {
 							) }
 						</div>
 					) }
-					{ showAssignmentLabel && (
-						<p className="wp-block-abtest-block-test__sidebar-note">
-							{ assignmentPreviewText }
-						</p>
-					) }
-					{ showWinnerState && (
-						<p className="wp-block-abtest-block-test__sidebar-note">
-							{ winnerStateText }
-						</p>
-					) }
-					{ enableQueryPreviewHints && (
-						<p className="wp-block-abtest-block-test__sidebar-note">
-							{ queryPreviewHint }
-						</p>
-					) }
-					<p className="wp-block-abtest-block-test__sidebar-note">
-						{ assignmentSourceText }
-					</p>
-					<ToggleControl
-						label={ __(
-							'Show current assignment label in editor preview',
-							'ab-test-block'
+					<div className="wp-block-abtest-block-test__debug-section">
+						<h4 className="wp-block-abtest-block-test__debug-section-title">
+							{ __( 'Editor annotations', 'ab-test-block' ) }
+						</h4>
+						{ showAssignmentLabel && (
+							<p className="wp-block-abtest-block-test__sidebar-note">
+								{ assignmentPreviewText }
+							</p>
 						) }
-						checked={ showAssignmentLabel }
-						onChange={ setShowAssignmentLabel }
-					/>
-					<ToggleControl
-						label={ __(
-							'Show current winner state in editor',
-							'ab-test-block'
+						{ showWinnerState && (
+							<p className="wp-block-abtest-block-test__sidebar-note">
+								{ winnerStateText }
+							</p>
 						) }
-						checked={ showWinnerState }
-						onChange={ setShowWinnerState }
-					/>
-					<ToggleControl
-						label={ __(
-							'Enable query preview hints',
-							'ab-test-block'
+						{ enableQueryPreviewHints && (
+							<p className="wp-block-abtest-block-test__sidebar-note">
+								{ queryPreviewHint }
+							</p>
 						) }
-						checked={ enableQueryPreviewHints }
-						onChange={ setEnableQueryPreviewHints }
-					/>
+						<ToggleControl
+							label={ __(
+								'Show current assignment label in editor preview',
+								'ab-test-block'
+							) }
+							checked={ showAssignmentLabel }
+							onChange={ setShowAssignmentLabel }
+						/>
+						<ToggleControl
+							label={ __(
+								'Show current winner state in editor',
+								'ab-test-block'
+							) }
+							checked={ showWinnerState }
+							onChange={ setShowWinnerState }
+						/>
+						<ToggleControl
+							label={ __(
+								'Enable query preview hints',
+								'ab-test-block'
+							) }
+							checked={ enableQueryPreviewHints }
+							onChange={ setEnableQueryPreviewHints }
+						/>
+					</div>
 				</PanelBody>
 			</InspectorControls>
 			<div
@@ -1573,7 +1625,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner state: manual -> Variant %s', 'ab-test-block' ),
+			__( 'Manual -> Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1584,7 +1636,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner state: winner-locked -> Variant %s', 'ab-test-block' ),
+			__( 'Winner locked -> Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1595,7 +1647,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner state: candidate -> Variant %s', 'ab-test-block' ),
+			__( 'Candidate -> Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1604,10 +1656,10 @@ function getWinnerStateText(
 		winnerPreviewState.status === 'off' ||
 		attributes.winnerMode === 'off'
 	) {
-		return __( 'Winner state: off', 'ab-test-block' );
+		return __( 'Off', 'ab-test-block' );
 	}
 
-	return __( 'Winner state: no resolved winner yet', 'ab-test-block' );
+	return __( 'No resolved winner yet', 'ab-test-block' );
 }
 
 function getAssignmentSourceText(
@@ -1617,50 +1669,29 @@ function getAssignmentSourceText(
 ) {
 	if ( previewMode === 'winner' ) {
 		if ( winnerPreviewState.source === 'manual-winner' ) {
-			return __(
-				'Assignment source in this preview: manual-winner.',
-				'ab-test-block'
-			);
+			return __( 'Manual winner', 'ab-test-block' );
 		}
 
 		if ( winnerPreviewState.source === 'automatic-winner-locked' ) {
-			return __(
-				'Assignment source in this preview: locked-winner.',
-				'ab-test-block'
-			);
+			return __( 'Locked automatic winner', 'ab-test-block' );
 		}
 
 		if ( winnerPreviewState.source === 'automatic-candidate' ) {
-			return __(
-				'Assignment source in this preview: automatic-winner candidate.',
-				'ab-test-block'
-			);
+			return __( 'Automatic winner candidate', 'ab-test-block' );
 		}
 
-		return __(
-			'Assignment source in this preview: no resolved winner is available yet.',
-			'ab-test-block'
-		);
+		return __( 'No resolved winner yet', 'ab-test-block' );
 	}
 
 	if ( ! attributes.stickyAssignment ) {
-		return __(
-			'Assignment source in traffic mode: weighted-random on every page load.',
-			'ab-test-block'
-		);
+		return __( 'Weighted-random', 'ab-test-block' );
 	}
 
 	if ( attributes.stickyScope === 'experiment' ) {
-		return __(
-			'Assignment source in traffic mode: weighted-random on first view, then sticky by shared Experiment ID.',
-			'ab-test-block'
-		);
+		return __( 'Sticky (shared experiment)', 'ab-test-block' );
 	}
 
-	return __(
-		'Assignment source in traffic mode: weighted-random on first view, then sticky for this page and block instance.',
-		'ab-test-block'
-	);
+	return __( 'Sticky (this block)', 'ab-test-block' );
 }
 
 function getStickyLabel( attributes: AbTestExperimentAttributes ) {
@@ -1677,64 +1708,66 @@ function getStickyLabel( attributes: AbTestExperimentAttributes ) {
 
 function renderStatsCard( title: string, snapshot: AbTestStatsScopeSnapshot ) {
 	return (
-		<div className="wp-block-abtest-block-test__stats-card">
-			<div className="wp-block-abtest-block-test__stats-head">
-				<h4 className="wp-block-abtest-block-test__stats-title">
-					{ title }
-				</h4>
-				<p className="wp-block-abtest-block-test__stats-meta">
-					{ snapshot.updatedAt
-						? sprintf(
-								/* translators: %s: date and time */
-								__( 'Updated %s', 'ab-test-block' ),
-								new Date(
-									snapshot.updatedAt * 1000
-								).toLocaleString()
-						  )
-						: __( 'No saved events yet', 'ab-test-block' ) }
-				</p>
-				{ typeof snapshot.postCount === 'number' &&
-					typeof snapshot.blockInstanceCount === 'number' && (
-						<p className="wp-block-abtest-block-test__stats-meta">
-							{ sprintf(
-								/* translators: 1: post count, 2: block instance count */
-								__(
-									'%1$d posts · %2$d block instances',
-									'ab-test-block'
-								),
-								snapshot.postCount,
-								snapshot.blockInstanceCount
-							) }
-						</p>
-					) }
-			</div>
-			<div className="wp-block-abtest-block-test__stats-rows">
-				{ snapshot.variants.map( ( variant ) => (
-					<div
-						key={ variant.variantKey }
-						className="wp-block-abtest-block-test__stats-row"
-					>
-						<span className="wp-block-abtest-block-test__stats-key">
-							{ sprintf(
-								/* translators: %s: variant key */
-								__( 'Variant %s', 'ab-test-block' ),
-								variant.variantKey.toUpperCase()
-							) }
-						</span>
-						<span className="wp-block-abtest-block-test__stats-value">
-							{ sprintf(
-								/* translators: 1: impression count, 2: click count, 3: ctr percentage */
-								__(
-									'%1$d impressions · %2$d clicks · %3$s CTR',
-									'ab-test-block'
-								),
-								variant.impressions,
-								variant.clicks,
-								formatCtrPercentage( variant.ctr )
-							) }
-						</span>
-					</div>
-				) ) }
+		<div className="wp-block-abtest-block-test__debug-section">
+			<h4 className="wp-block-abtest-block-test__debug-section-title">
+				{ title }
+			</h4>
+			<div className="wp-block-abtest-block-test__stats-card">
+				<div className="wp-block-abtest-block-test__stats-head">
+					<p className="wp-block-abtest-block-test__stats-meta">
+						{ snapshot.updatedAt
+							? sprintf(
+									/* translators: %s: date and time */
+									__( 'Updated %s', 'ab-test-block' ),
+									new Date(
+										snapshot.updatedAt * 1000
+									).toLocaleString()
+							  )
+							: __( 'No saved events yet', 'ab-test-block' ) }
+					</p>
+					{ typeof snapshot.postCount === 'number' &&
+						typeof snapshot.blockInstanceCount === 'number' && (
+							<p className="wp-block-abtest-block-test__stats-meta">
+								{ sprintf(
+									/* translators: 1: post count, 2: block instance count */
+									__(
+										'%1$d posts · %2$d block instances',
+										'ab-test-block'
+									),
+									snapshot.postCount,
+									snapshot.blockInstanceCount
+								) }
+							</p>
+						) }
+				</div>
+				<div className="wp-block-abtest-block-test__stats-rows">
+					{ snapshot.variants.map( ( variant ) => (
+						<div
+							key={ variant.variantKey }
+							className="wp-block-abtest-block-test__stats-row"
+						>
+							<span className="wp-block-abtest-block-test__stats-key">
+								{ sprintf(
+									/* translators: %s: variant key */
+									__( 'Variant %s', 'ab-test-block' ),
+									variant.variantKey.toUpperCase()
+								) }
+							</span>
+							<span className="wp-block-abtest-block-test__stats-value">
+								{ sprintf(
+									/* translators: 1: impression count, 2: click count, 3: ctr percentage */
+									__(
+										'%1$d impressions · %2$d clicks · %3$s CTR',
+										'ab-test-block'
+									),
+									variant.impressions,
+									variant.clicks,
+									formatCtrPercentage( variant.ctr )
+								) }
+							</span>
+						</div>
+					) ) }
+				</div>
 			</div>
 		</div>
 	);

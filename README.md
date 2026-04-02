@@ -62,6 +62,14 @@ bun run lint
 bun run build
 ```
 
+## Smoke Modes
+
+-   `bun run smoke:e2e:core` checks front-end render, one active variant, `abtest_impression` / `abtest_stats`, and sticky assignment for both `instance` and `experiment` scopes.
+-   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Debug panel visibility.
+-   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
+-   GitHub Actions only hard-asserts `smoke:e2e:core`.
+-   The editor smoke keeps the `Advanced` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
+
 ## Local WordPress Validation
 
 ```bash
