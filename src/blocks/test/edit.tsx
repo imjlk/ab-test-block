@@ -135,6 +135,9 @@ export default function Edit( {
 		useState( true );
 	const [ isEditingExperimentId, setIsEditingExperimentId ] =
 		useState( false );
+	const [ copyExperimentIdStatus, setCopyExperimentIdStatus ] = useState<
+		'idle' | 'copied' | 'error'
+	>( 'idle' );
 	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
 	const [ isStatsLoading, setIsStatsLoading ] = useState( false );
 	const [ statsError, setStatsError ] = useState< string | undefined >();
@@ -369,6 +372,18 @@ export default function Edit( {
 		normalizedAttributes.weights,
 		updateBlockAttributes,
 	] );
+
+	useEffect( () => {
+		if ( copyExperimentIdStatus === 'idle' ) {
+			return undefined;
+		}
+
+		const timeoutId = window.setTimeout( () => {
+			setCopyExperimentIdStatus( 'idle' );
+		}, 1800 );
+
+		return () => window.clearTimeout( timeoutId );
+	}, [ copyExperimentIdStatus ] );
 
 	useEffect( () => {
 		const desiredBlocks = variantKeys.map( ( key ) => {
@@ -620,6 +635,13 @@ export default function Edit( {
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
+	}
+
+	async function handleCopyExperimentId() {
+		const didCopy = await copyTextToClipboard(
+			normalizedAttributes.experimentId
+		);
+		setCopyExperimentIdStatus( didCopy ? 'copied' : 'error' );
 	}
 
 	return (
@@ -920,7 +942,23 @@ export default function Edit( {
 								? __( 'Done editing ID', 'ab-test-block' )
 								: __( 'Edit Experiment ID', 'ab-test-block' ) }
 						</Button>
+						<Button
+							variant="secondary"
+							onClick={ handleCopyExperimentId }
+						>
+							{ copyExperimentIdStatus === 'copied'
+								? __( 'Copied', 'ab-test-block' )
+								: __( 'Copy ID', 'ab-test-block' ) }
+						</Button>
 					</div>
+					{ copyExperimentIdStatus === 'error' && (
+						<Notice status="warning" isDismissible={ false }>
+							{ __(
+								'Could not copy the Experiment ID. Try selecting the value manually.',
+								'ab-test-block'
+							) }
+						</Notice>
+					) }
 					<TextControl
 						label={ __( 'Experiment ID', 'ab-test-block' ) }
 						value={ normalizedAttributes.experimentId }
@@ -1775,4 +1813,32 @@ function renderStatsCard( title: string, snapshot: AbTestStatsScopeSnapshot ) {
 
 function formatCtrPercentage( value: number ) {
 	return `${ ( value * 100 ).toFixed( 1 ) }%`;
+}
+
+async function copyTextToClipboard( value: string ) {
+	if ( navigator.clipboard?.writeText ) {
+		try {
+			await navigator.clipboard.writeText( value );
+			return true;
+		} catch ( error ) {
+			// Fall through to legacy copy for environments without clipboard permissions.
+		}
+	}
+
+	try {
+		const textarea = document.createElement( 'textarea' );
+		textarea.value = value;
+		textarea.setAttribute( 'readonly', 'readonly' );
+		textarea.style.position = 'fixed';
+		textarea.style.opacity = '0';
+		textarea.style.pointerEvents = 'none';
+		document.body.appendChild( textarea );
+		textarea.focus();
+		textarea.select();
+		const didCopy = document.execCommand( 'copy' );
+		document.body.removeChild( textarea );
+		return didCopy;
+	} catch ( error ) {
+		return false;
+	}
 }

@@ -209,6 +209,8 @@
 	&__field-actions {
 		display: flex;
 		justify-content: flex-start;
+		flex-wrap: wrap;
+		gap: 8px;
 		margin: 0 0 10px;
 	}
 }

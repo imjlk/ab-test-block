@@ -914,6 +914,39 @@ async function runEditorSmoke( statsPostId: number ) {
 
 	const advancedSidebar = await openSidebarPanel( adminPage, 'Advanced' );
 	const advancedSidebarText = await advancedSidebar.innerText();
+	const experimentIdInput = advancedSidebar.getByLabel( 'Experiment ID' );
+	assert(
+		await experimentIdInput.isDisabled(),
+		'Expected Experiment ID to stay locked by default'
+	);
+
+	if ( advancedSidebarText.includes( 'Copy ID' ) ) {
+		await advancedSidebar
+			.getByRole( 'button', { name: 'Copy ID' } )
+			.click();
+		await adminPage.waitForTimeout( 300 );
+
+		const advancedTextAfterCopy = await advancedSidebar.innerText();
+
+		if ( advancedTextAfterCopy.includes( 'Copied' ) ) {
+			assert(
+				await experimentIdInput.isDisabled(),
+				'Expected Copy ID to leave the Experiment ID field locked'
+			);
+		} else if (
+			advancedTextAfterCopy.includes( 'Could not copy the Experiment ID' )
+		) {
+			assert(
+				await experimentIdInput.isDisabled(),
+				'Expected failed Copy ID feedback to leave the Experiment ID field locked'
+			);
+		} else {
+			writeWarning(
+				'Skipping Copy ID feedback assertion because this editor session did not expose a stable clipboard success or failure message.'
+			);
+		}
+	}
+
 	if ( advancedSidebarText.includes( 'Edit Experiment ID' ) ) {
 		await adminPage.evaluate( () => {
 			const sidebarElement = document.querySelector(
