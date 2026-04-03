@@ -1,11 +1,9 @@
+@use "./surface";
+
 .wp-block-abtest-block-test {
 	position: relative;
-	padding: 20px;
-	border-radius: 22px;
-	background:
-		radial-gradient(circle at top left, rgba(255, 255, 255, 0.35), transparent 32%),
-		linear-gradient(145deg, #f6efe0 0%, #efe3cb 100%);
-	border: 1px solid rgba(103, 78, 32, 0.18);
+
+	@include surface.shell-surface;
 
 	&__runtime-label {
 		margin: 0 0 12px;

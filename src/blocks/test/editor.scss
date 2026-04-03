@@ -1,7 +1,8 @@
+@use "./surface";
+
 .wp-block-abtest-block-test {
-	padding: 0;
-	border: 0;
-	background: transparent;
+
+	@include surface.shell-surface;
 
 	&__debug {
 		margin: 8px 0 0;
