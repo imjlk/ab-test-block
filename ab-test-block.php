@@ -3,7 +3,7 @@
  * Plugin Name:       A/B Test Block
  * Description:       Block Directory-ready A/B and A/B/C experiment block with weighted delivery and winner selection.
  * Version:           0.3.1
- * Requires at least: 6.7
+ * Requires at least: 6.9
  * Requires PHP:      7.4
  * Author:            imjlk
  * License:           GPL-2.0-or-later

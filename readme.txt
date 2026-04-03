@@ -1,8 +1,8 @@
 === A/B Test Block ===
 Contributors: imjlk
 Tags: ab test, experiment, split test, marketing, block
-Requires at least: 6.7
-Tested up to: 6.8
+Requires at least: 6.9
+Tested up to: 6.9
 Requires PHP: 7.4
 Stable tag: 0.3.1
 License: GPLv2 or later
@@ -43,6 +43,11 @@ Not included:
 2. Activate the plugin through the Plugins screen in WordPress.
 3. Insert the `A/B Test` block in the editor and start editing variants.
 
+== Screenshots ==
+
+1. The front end shows one active Variant at a time while impressions and CTA clicks are tracked in the background.
+2. The editor keeps the parent shell minimal so the active Variant stays close to the front-end presentation.
+
 == Frequently Asked Questions ==
 
 = Does this plugin add an admin report screen? =
@@ -78,6 +83,17 @@ No. The server stores aggregate experiment stats only. Sticky assignment is brow
 Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
 == Changelog ==
+
+= 0.3.1 =
+
+* Refined the editor so the A/B Test parent block stays lightweight and the active Variant remains the focus.
+* Added stats readback in the editor Debug panel plus read-only WP-CLI inspection commands.
+* Added optional shared-experiment sticky scope, release zip smoke checks, and a site-wide tracking kill switch.
+
+= 0.3.0 =
+
+* Added editor and browser stats surfaces, shared experiment aggregation, and improved debug visibility.
+* Added Playground blueprints, preview links, and release automation hardening.
 
 = 0.2.0 =
 

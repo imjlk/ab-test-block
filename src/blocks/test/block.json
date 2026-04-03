@@ -132,20 +132,20 @@
 		}
 	},
 	"example": {
+		"viewportWidth": 960,
 		"attributes": {
-			"experimentId": "experiment",
-			"experimentLabel": "Experiment",
+			"experimentId": "home_hero",
+			"experimentLabel": "Homepage hero",
 			"variantCount": 2,
 			"weights": {
-				"a": 0,
-				"b": 0,
+				"a": 50,
+				"b": 50,
 				"c": 0
 			},
-			"previewQueryKey": "abtest",
+			"previewQueryKey": "ab_home_hero",
 			"stickyAssignment": true,
 			"stickyScope": "instance",
 			"winnerMode": "off",
-			"manualWinner": "a",
 			"automaticMetric": "ctr",
 			"minimumImpressionsPerVariant": 100,
 			"minimumClicksPerVariant": 1,
@@ -157,7 +157,53 @@
 			"emitKexpLayer": false,
 			"emitDataLayer": false,
 			"emitClarityHook": false,
-			"blockInstanceId": "Example blockInstanceId"
-		}
+			"blockInstanceId": "homehero01"
+		},
+		"innerBlocks": [
+			{
+				"name": "abtest-block/variant",
+				"attributes": {
+					"variantKey": "a",
+					"variantLabel": "Variant A"
+				},
+				"innerBlocks": [
+					{
+						"name": "core/heading",
+						"attributes": {
+							"content": "Variant A headline",
+							"level": 3
+						}
+					},
+					{
+						"name": "core/paragraph",
+						"attributes": {
+							"content": "Free shipping framing for the same offer."
+						}
+					}
+				]
+			},
+			{
+				"name": "abtest-block/variant",
+				"attributes": {
+					"variantKey": "b",
+					"variantLabel": "Variant B"
+				},
+				"innerBlocks": [
+					{
+						"name": "core/heading",
+						"attributes": {
+							"content": "Variant B headline",
+							"level": 3
+						}
+					},
+					{
+						"name": "core/paragraph",
+						"attributes": {
+							"content": "Urgency framing for the same offer."
+						}
+					}
+				]
+			}
+		]
 	}
 }

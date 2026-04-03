@@ -37,6 +37,14 @@
 		"attributes": {
 			"variantKey": "a",
 			"variantLabel": "Variant A"
-		}
+		},
+		"innerBlocks": [
+			{
+				"name": "core/paragraph",
+				"attributes": {
+					"content": "Variant content goes here."
+				}
+			}
+		]
 	}
 }

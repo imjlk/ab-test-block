@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+import fs from 'node:fs';
+
 import { syncBlockMetadata } from '@wp-typia/create/metadata-core';
 
 async function main() {
@@ -20,10 +22,24 @@ async function main() {
 	] as const;
 
 	for ( const block of blocks ) {
+		const previousMetadata = JSON.parse(
+			fs.readFileSync( block.blockJsonFile, 'utf8' )
+		) as Record< string, unknown >;
 		const result = await syncBlockMetadata( {
 			...block,
 			typesFile: 'src/types.ts',
 		} );
+		const nextMetadata = JSON.parse(
+			fs.readFileSync( block.blockJsonFile, 'utf8' )
+		) as Record< string, unknown >;
+
+		if ( 'example' in previousMetadata ) {
+			nextMetadata.example = previousMetadata.example;
+			fs.writeFileSync(
+				block.blockJsonFile,
+				`${ JSON.stringify( nextMetadata, null, '\t' ) }\n`
+			);
+		}
 
 		console.log(
 			`✅ Generated block metadata for ${ block.sourceTypeName }`
