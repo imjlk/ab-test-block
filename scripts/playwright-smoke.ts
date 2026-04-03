@@ -912,7 +912,10 @@ async function runEditorSmoke( statsPostId: number ) {
 		'Expected Debug panel to show the current assignment source text'
 	);
 
-	const advancedSidebar = await openSidebarPanel( adminPage, 'Advanced' );
+	const advancedSidebar = await openSidebarPanel(
+		adminPage,
+		'Identity & Preview'
+	);
 	const advancedSidebarText = await advancedSidebar.innerText();
 	const experimentIdInput = advancedSidebar.getByLabel( 'Experiment ID' );
 	assert(
@@ -998,7 +1001,7 @@ async function runEditorSmoke( statsPostId: number ) {
 		);
 	} else {
 		writeWarning(
-			'Skipping Experiment ID editor smoke check because the Advanced panel control text was not discoverable in this editor session.'
+			'Skipping Experiment ID editor smoke check because the Identity & Preview panel control text was not discoverable in this editor session.'
 		);
 	}
 }

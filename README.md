@@ -78,8 +78,19 @@ bun run build
 -   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Debug panel visibility.
 -   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
 -   GitHub Actions only hard-asserts `smoke:e2e:core`.
--   The editor smoke keeps the `Advanced` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
+-   The editor smoke keeps the `Identity & Preview` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
 -   CI also runs a clean zip-install smoke that installs `ab-test-block.zip` into a fresh WordPress environment before checking routes and front-end render.
+
+## Visual QA
+
+-   `bun run visual:e2e:update` refreshes the repo-tracked Playwright baseline screenshots for the canonical parity fixture.
+-   `bun run visual:e2e:check` recaptures the same fixture locally and compares it against the committed baselines.
+-   The current baseline set covers:
+    -   front `Variant A`
+    -   front `Variant B`
+    -   editor with the parent block selected
+    -   editor with a child variant selected
+-   This suite is local-first for now so we can stabilize screenshot noise before promoting any subset into CI.
 
 ## Local WordPress Validation
 
