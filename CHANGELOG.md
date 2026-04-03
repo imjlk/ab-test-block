@@ -1,5 +1,13 @@
 # ab-test-block
 
+## 0.3.2 — 2026-04-03
+
+### Patch changes
+
+- [7213848](https://github.com/imjlk/ab-test-block/commit/721384829fff0732f8bd22131106626f45e8ff1b) Polish the plugin for WordPress Block Directory submission by tightening the
+  plugin metadata, preserving curated inserter examples during type sync, and
+  adding WordPress.org-facing screenshots and assets. — Thanks @imjlk!
+
 ## 0.3.1 — 2026-04-02
 
 ### Patch changes
