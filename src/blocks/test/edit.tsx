@@ -926,7 +926,7 @@ export default function Edit( {
 					/>
 				</PanelBody>
 				<PanelBody
-					title={ __( 'Advanced', 'ab-test-block' ) }
+					title={ __( 'Identity & Preview', 'ab-test-block' ) }
 					initialOpen={ false }
 				>
 					<div className="wp-block-abtest-block-test__field-actions">
