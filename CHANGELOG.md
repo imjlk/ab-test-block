@@ -1,5 +1,15 @@
 # ab-test-block
 
+## 0.3.3 — 2026-04-03
+
+### Patch changes
+
+- [b8efa72](https://github.com/imjlk/ab-test-block/commit/b8efa729e1b4db911221e650de5b404c3918a9f0) Changed: finalized the Block Directory submission polish by unifying the canonical A/B demo fixture across block examples, Playground content, and WordPress.org screenshots.
+  
+  Added: local visual parity baselines and screenshot sync tooling so editor and front-end presentation can stay aligned as the block evolves.
+  
+  Changed: polished editor copy and toolbar accessibility cues without changing tracking semantics or public APIs. — Thanks @imjlk!
+
 ## 0.3.2 — 2026-04-03
 
 ### Patch changes
