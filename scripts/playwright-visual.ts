@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
 
+import { buildCanonicalExperimentMarkup } from './canonical-demo';
+
 type VariantKey = 'a' | 'b';
 
 const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
@@ -65,65 +67,17 @@ function createFixturePost( title: string, content: string ) {
 	return postId;
 }
 
-function buildHeading( text: string ) {
-	return `<!-- wp:heading {"level":3} --><h3 class="wp-block-heading">${ text }</h3><!-- /wp:heading -->`;
-}
-
 function buildParagraph( text: string ) {
 	return `<!-- wp:paragraph --><p>${ text }</p><!-- /wp:paragraph -->`;
 }
 
-function buildButtons( href: string, label: string ) {
-	return `<!-- wp:buttons --><div class="wp-block-buttons"><!-- wp:button {"url":"${ href }","className":"abtest-cta"} --><div class="wp-block-button abtest-cta"><a class="wp-block-button__link wp-element-button" href="${ href }">${ label }</a></div><!-- /wp:button --></div><!-- /wp:buttons -->`;
-}
-
-function buildVariantBlock( variantKey: VariantKey, innerBlocks: string ) {
-	return `<!-- wp:abtest-block/variant ${ JSON.stringify( {
-		variantKey,
-		variantLabel: `Variant ${ variantKey.toUpperCase() }`,
-	} ) } --><div class="wp-block-abtest-block-variant" data-abtest-variant="${ variantKey }" data-variant-label="Variant ${ variantKey.toUpperCase() }">${ innerBlocks }</div><!-- /wp:abtest-block/variant -->`;
-}
-
 function buildExperimentBlock() {
-	return `<!-- wp:abtest-block/test ${ JSON.stringify( {
-		automaticMetric: 'ctr',
+	return buildCanonicalExperimentMarkup( {
 		blockInstanceId: 'visualfixture1',
-		emitBrowserEvents: true,
-		emitClarityHook: false,
-		emitDataLayer: false,
-		emitKexpLayer: false,
-		evaluationWindowDays: 14,
 		experimentId: 'visual_fixture',
 		experimentLabel: 'Visual parity fixture',
-		lockWinnerAfterSelection: true,
-		minimumClicksPerVariant: 1,
-		minimumImpressionsPerVariant: 100,
 		previewQueryKey: 'ab_visual_fixture',
-		stickyAssignment: true,
-		stickyScope: 'instance',
-		trackClicks: true,
-		trackImpressions: true,
-		variantCount: 2,
-		weights: {
-			a: 50,
-			b: 50,
-		},
-		winnerMode: 'off',
-	} ) } -->${ buildVariantBlock(
-		'a',
-		`${ buildHeading(
-			'Variant A: Free shipping framing'
-		) }${ buildParagraph(
-			'Use this canonical fixture to validate editor and front-end parity around shell styling, spacing, and CTA rhythm.'
-		) }${ buildButtons( '#variant-a', 'Explore Variant A' ) }`
-	) }${ buildVariantBlock(
-		'b',
-		`${ buildHeading(
-			'Variant B: Limited-time framing'
-		) }${ buildParagraph(
-			'This alternate variant keeps the same structure while changing the copy so the two active states stay visually comparable.'
-		) }${ buildButtons( '#variant-b', 'Explore Variant B' ) }`
-	) }<!-- /wp:abtest-block/test -->`;
+	} );
 }
 
 async function launchContext() {

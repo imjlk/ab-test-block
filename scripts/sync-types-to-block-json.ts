@@ -3,6 +3,11 @@ import fs from 'node:fs';
 
 import { syncBlockMetadata } from '@wp-typia/create/metadata-core';
 
+import {
+	getCanonicalExperimentExample,
+	getCanonicalVariantExample,
+} from './canonical-demo';
+
 async function main() {
 	const blocks = [
 		{
@@ -33,13 +38,18 @@ async function main() {
 			fs.readFileSync( block.blockJsonFile, 'utf8' )
 		) as Record< string, unknown >;
 
-		if ( 'example' in previousMetadata ) {
+		if ( block.sourceTypeName === 'AbTestExperimentAttributes' ) {
+			nextMetadata.example = getCanonicalExperimentExample();
+		} else if ( block.sourceTypeName === 'AbTestVariantAttributes' ) {
+			nextMetadata.example = getCanonicalVariantExample();
+		} else if ( 'example' in previousMetadata ) {
 			nextMetadata.example = previousMetadata.example;
-			fs.writeFileSync(
-				block.blockJsonFile,
-				`${ JSON.stringify( nextMetadata, null, '\t' ) }\n`
-			);
 		}
+
+		fs.writeFileSync(
+			block.blockJsonFile,
+			`${ JSON.stringify( nextMetadata, null, '\t' ) }\n`
+		);
 
 		console.log(
 			`✅ Generated block metadata for ${ block.sourceTypeName }`

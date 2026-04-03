@@ -46,7 +46,7 @@ Not included:
 == Screenshots ==
 
 1. The front end shows one active Variant at a time while impressions and CTA clicks are tracked in the background.
-2. The editor keeps the parent shell minimal so the active Variant stays close to the front-end presentation.
+2. The editor keeps the same shell styling so the active Variant stays close to the front-end presentation.
 
 == Frequently Asked Questions ==
 
@@ -83,6 +83,11 @@ No. The server stores aggregate experiment stats only. Sticky assignment is brow
 Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
 == Changelog ==
+
+= 0.3.2 =
+
+* Polished Block Directory submission assets and synchronized the editor and front-end shell styling.
+* Added visual parity baselines so screenshot and Playground fixtures stay aligned with the live block UI.
 
 = 0.3.1 =
 

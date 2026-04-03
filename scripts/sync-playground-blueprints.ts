@@ -2,6 +2,8 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 
+import { buildCanonicalExperimentMarkup } from './canonical-demo';
+
 const DEFAULT_BRANCH = 'playground-build';
 const DEFAULT_LANDING_PAGE = '/wp-admin/post.php?post=1001&action=edit';
 const DEFAULT_PHP_VERSION = '8.3';
@@ -85,9 +87,16 @@ function replaceQuotedPlaceholder(
 	return template.replaceAll( `"__${ token }__"`, JSON.stringify( value ) );
 }
 
-function buildRunPhpCode() {
-	const demoPostContent = fs.readFileSync( DEMO_POST_CONTENT, 'utf8' ).trim();
+function getPlaygroundDemoPostContent() {
+	return buildCanonicalExperimentMarkup( {
+		blockInstanceId: 'playdemo01',
+		experimentId: 'playground_demo',
+		experimentLabel: 'Playground demo',
+		previewQueryKey: 'ab_playground_demo',
+	} );
+}
 
+function buildRunPhpCode( demoPostContent: string ) {
 	return `<?php
 if ( ! function_exists( 'wp_insert_post' ) ) {
 \trequire_once '/wordpress/wp-load.php';
@@ -211,19 +220,22 @@ function writeJsonFile( targetPath: string, data: unknown ) {
 function syncBlueprintFiles() {
 	const repositorySlug = getRepositorySlug();
 	const branch = getBranchName();
+	const demoPostContent = getPlaygroundDemoPostContent();
+
+	fs.writeFileSync( DEMO_POST_CONTENT, `${ demoPostContent }\n` );
 	const githubBlueprint = hydrateTemplate( GITHUB_TEMPLATE, {
 		LANDING_PAGE: DEFAULT_LANDING_PAGE,
 		PHP_VERSION: DEFAULT_PHP_VERSION,
 		PLUGIN_ZIP_URL:
 			getArgValue( '--plugin-zip-url' ) ??
 			getRawGithubZipUrl( repositorySlug, branch ),
-		RUN_PHP_CODE: buildRunPhpCode(),
+		RUN_PHP_CODE: buildRunPhpCode( demoPostContent ),
 		WP_VERSION: DEFAULT_WP_VERSION,
 	} );
 	const wordpressOrgBlueprint = hydrateTemplate( WORDPRESS_ORG_TEMPLATE, {
 		LANDING_PAGE: DEFAULT_LANDING_PAGE,
 		PHP_VERSION: DEFAULT_PHP_VERSION,
-		RUN_PHP_CODE: buildRunPhpCode(),
+		RUN_PHP_CODE: buildRunPhpCode( demoPostContent ),
 		WP_VERSION: DEFAULT_WP_VERSION,
 	} );
 

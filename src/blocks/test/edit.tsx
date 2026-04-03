@@ -660,6 +660,7 @@ export default function Edit( {
 								__( 'Edit Variant %s', 'ab-test-block' ),
 								variantKey.toUpperCase()
 							) }
+							showTooltip
 							onClick={ () =>
 								activateVariantEditor( variantKey )
 							}
@@ -672,6 +673,7 @@ export default function Edit( {
 					<ToolbarButton
 						isPressed={ previewMode === 'traffic' }
 						label={ __( 'Traffic mode', 'ab-test-block' ) }
+						showTooltip
 						onClick={ previewTrafficMode }
 					>
 						{ __( 'Traffic', 'ab-test-block' ) }
@@ -679,6 +681,7 @@ export default function Edit( {
 					<ToolbarButton
 						isPressed={ previewMode === 'winner' }
 						label={ __( 'Winner preview', 'ab-test-block' ) }
+						showTooltip
 						onClick={ previewWinnerMode }
 					>
 						{ __( 'Winner', 'ab-test-block' ) }
@@ -693,6 +696,7 @@ export default function Edit( {
 							<ToolbarButton
 								aria-expanded={ isOpen }
 								label={ __( 'More', 'ab-test-block' ) }
+								showTooltip
 								onClick={ onToggle }
 							>
 								{ __( 'More', 'ab-test-block' ) }
@@ -877,7 +881,7 @@ export default function Edit( {
 							previewTrafficMode();
 						} }
 						help={ __(
-							'Traffic mode edits one variant at a time. Winner preview lets you inspect the currently resolved winner without changing saved settings.',
+							'Traffic mode edits one variant at a time. Winner preview lets you inspect the resolved winner without changing saved settings.',
 							'ab-test-block'
 						) }
 					/>
@@ -888,7 +892,7 @@ export default function Edit( {
 						! winnerPreviewState.variant && (
 							<Notice status="warning" isDismissible={ false }>
 								{ __(
-									'Winner preview does not yet have a resolved variant to show in the editor.',
+									'Winner preview has no resolved variant to show yet.',
 									'ab-test-block'
 								) }
 							</Notice>
@@ -902,7 +906,7 @@ export default function Edit( {
 							updateAttribute( 'experimentLabel', value )
 						}
 						help={ __(
-							'Human-friendly label used in the editor shell and debug stats.',
+							'Readable name used in the editor and debug stats.',
 							'ab-test-block'
 						) }
 					/>
@@ -967,7 +971,7 @@ export default function Edit( {
 							updateAttribute( 'experimentId', value )
 						}
 						help={ __(
-							'Machine-readable grouping key for query preview, analytics payloads, and optional cross-post experiment aggregates.',
+							'Stable key used for preview links, shared sticky scope, and aggregate stats.',
 							'ab-test-block'
 						) }
 					/>
@@ -986,7 +990,7 @@ export default function Edit( {
 							updateAttribute( 'previewQueryKey', value )
 						}
 						help={ __(
-							'Supports both a block-specific key and ?abtest=experimentId:variant.',
+							'Supports both ?your_key=b and ?abtest=experimentId:b.',
 							'ab-test-block'
 						) }
 					/>
@@ -999,7 +1003,7 @@ export default function Edit( {
 						help={
 							normalizedAttributes.stickyAssignment
 								? __(
-										'Keeps the assigned variant stable for the current browser using localStorage only.',
+										'Keeps the assigned variant stable for the current browser using localStorage.',
 										'ab-test-block'
 								  )
 								: __(
@@ -1299,7 +1303,7 @@ export default function Edit( {
 				<PanelBody title={ __( 'Debug', 'ab-test-block' ) }>
 					<Notice status="info" isDismissible={ false }>
 						{ __(
-							'Saved server stats are shown here for both this block instance and the shared experiment ID. Preview mode does not write new stats.',
+							'Saved server stats appear here for this block and the shared experiment. Preview mode never writes new stats.',
 							'ab-test-block'
 						) }
 					</Notice>
@@ -1573,7 +1577,7 @@ function getPreviewSummary(
 		return sprintf(
 			/* translators: 1: active variant key, 2: weight summary */
 			__(
-				'Traffic mode is editing Variant %1$s. Configured delivery: %2$s.',
+				'Editing Variant %1$s in traffic mode. Delivery: %2$s.',
 				'ab-test-block'
 			),
 			activeVariantKey.toUpperCase(),
@@ -1584,10 +1588,7 @@ function getPreviewSummary(
 	if ( winnerPreviewState.variant ) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__(
-				'Winner preview is forcing Variant %s in the editor.',
-				'ab-test-block'
-			),
+			__( 'Winner preview is showing Variant %s.', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1597,13 +1598,13 @@ function getPreviewSummary(
 		winnerPreviewState.source === 'automatic-winner-locked'
 	) {
 		return __(
-			'Winner preview is enabled, but automatic winner resolution is only available after front-end stats are evaluated.',
+			'Winner preview is enabled, but automatic resolution is not available until front-end stats are evaluated.',
 			'ab-test-block'
 		);
 	}
 
 	return __(
-		'Winner preview is enabled, but no manual or automatic winner is currently available in the editor.',
+		'Winner preview is enabled, but no manual or automatic winner is available yet.',
 		'ab-test-block'
 	);
 }
@@ -1627,10 +1628,7 @@ function getAssignmentPreviewText(
 
 		return sprintf(
 			/* translators: 1: variant key, 2: preview source */
-			__(
-				'Current editor preview: Variant %1$s via %2$s.',
-				'ab-test-block'
-			),
+			__( 'Variant %1$s via %2$s.', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase(),
 			previewSource
 		);
@@ -1638,17 +1636,14 @@ function getAssignmentPreviewText(
 
 	if ( previewMode === 'winner' ) {
 		return __(
-			'Current editor preview: winner preview is active, but no resolved winner is available.',
+			'Winner preview is active, but no resolved winner is available.',
 			'ab-test-block'
 		);
 	}
 
 	return sprintf(
 		/* translators: %s: variant key */
-		__(
-			'Current editor preview: editing Variant %s in traffic mode.',
-			'ab-test-block'
-		),
+		__( 'Editing Variant %s in traffic mode.', 'ab-test-block' ),
 		activeVariantKey.toUpperCase()
 	);
 }

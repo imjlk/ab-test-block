@@ -40,10 +40,30 @@
 		},
 		"innerBlocks": [
 			{
-				"name": "core/paragraph",
 				"attributes": {
-					"content": "Variant content goes here."
-				}
+					"content": "Variant A: Free shipping framing",
+					"level": 3
+				},
+				"name": "core/heading"
+			},
+			{
+				"attributes": {
+					"content": "Use this canonical fixture to validate editor and front-end parity around shell styling, spacing, and CTA rhythm."
+				},
+				"name": "core/paragraph"
+			},
+			{
+				"innerBlocks": [
+					{
+						"attributes": {
+							"className": "abtest-cta",
+							"text": "Explore Variant A",
+							"url": "#variant-a"
+						},
+						"name": "core/button"
+					}
+				],
+				"name": "core/buttons"
 			}
 		]
 	}

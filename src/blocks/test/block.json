@@ -132,78 +132,104 @@
 		}
 	},
 	"example": {
-		"viewportWidth": 960,
 		"attributes": {
-			"experimentId": "home_hero",
-			"experimentLabel": "Homepage hero",
+			"automaticMetric": "ctr",
+			"blockInstanceId": "visualfixture1",
+			"emitBrowserEvents": true,
+			"emitClarityHook": false,
+			"emitDataLayer": false,
+			"emitKexpLayer": false,
+			"evaluationWindowDays": 14,
+			"experimentId": "visual_fixture",
+			"experimentLabel": "Visual parity fixture",
+			"lockWinnerAfterSelection": true,
+			"minimumClicksPerVariant": 1,
+			"minimumImpressionsPerVariant": 100,
+			"previewQueryKey": "ab_visual_fixture",
+			"stickyAssignment": true,
+			"stickyScope": "instance",
+			"trackClicks": true,
+			"trackImpressions": true,
 			"variantCount": 2,
 			"weights": {
 				"a": 50,
 				"b": 50,
 				"c": 0
 			},
-			"previewQueryKey": "ab_home_hero",
-			"stickyAssignment": true,
-			"stickyScope": "instance",
-			"winnerMode": "off",
-			"automaticMetric": "ctr",
-			"minimumImpressionsPerVariant": 100,
-			"minimumClicksPerVariant": 1,
-			"evaluationWindowDays": 14,
-			"lockWinnerAfterSelection": true,
-			"trackImpressions": true,
-			"trackClicks": true,
-			"emitBrowserEvents": true,
-			"emitKexpLayer": false,
-			"emitDataLayer": false,
-			"emitClarityHook": false,
-			"blockInstanceId": "homehero01"
+			"winnerMode": "off"
 		},
 		"innerBlocks": [
 			{
-				"name": "abtest-block/variant",
 				"attributes": {
 					"variantKey": "a",
 					"variantLabel": "Variant A"
 				},
 				"innerBlocks": [
 					{
-						"name": "core/heading",
 						"attributes": {
-							"content": "Variant A headline",
+							"content": "Variant A: Free shipping framing",
 							"level": 3
-						}
+						},
+						"name": "core/heading"
 					},
 					{
-						"name": "core/paragraph",
 						"attributes": {
-							"content": "Free shipping framing for the same offer."
-						}
+							"content": "Use this canonical fixture to validate editor and front-end parity around shell styling, spacing, and CTA rhythm."
+						},
+						"name": "core/paragraph"
+					},
+					{
+						"innerBlocks": [
+							{
+								"attributes": {
+									"className": "abtest-cta",
+									"text": "Explore Variant A",
+									"url": "#variant-a"
+								},
+								"name": "core/button"
+							}
+						],
+						"name": "core/buttons"
 					}
-				]
+				],
+				"name": "abtest-block/variant"
 			},
 			{
-				"name": "abtest-block/variant",
 				"attributes": {
 					"variantKey": "b",
 					"variantLabel": "Variant B"
 				},
 				"innerBlocks": [
 					{
-						"name": "core/heading",
 						"attributes": {
-							"content": "Variant B headline",
+							"content": "Variant B: Limited-time framing",
 							"level": 3
-						}
+						},
+						"name": "core/heading"
 					},
 					{
-						"name": "core/paragraph",
 						"attributes": {
-							"content": "Urgency framing for the same offer."
-						}
+							"content": "This alternate variant keeps the same structure while changing the copy so the two active states stay visually comparable."
+						},
+						"name": "core/paragraph"
+					},
+					{
+						"innerBlocks": [
+							{
+								"attributes": {
+									"className": "abtest-cta",
+									"text": "Explore Variant B",
+									"url": "#variant-b"
+								},
+								"name": "core/button"
+							}
+						],
+						"name": "core/buttons"
 					}
-				]
+				],
+				"name": "abtest-block/variant"
 			}
-		]
+		],
+		"viewportWidth": 960
 	}
 }
