@@ -1026,31 +1026,52 @@ async function runCoreSmoke( statsPostId: number ) {
 	);
 
 	for ( let attempt = 1; attempt <= 4; attempt += 1 ) {
-		try {
-			await migrationPage.waitForFunction(
-				( cookieKey ) =>
-					document.cookie
-						.split( ';' )
-						.map( ( entry ) => entry.trim() )
-						.find( ( entry ) =>
-							entry.startsWith( `${ cookieKey }=` )
-						)
-						?.split( '=' )[ 1 ] === 'b',
-				migrationCookieKey,
-				{
-					timeout: attempt === 1 ? 10000 : 7000,
-				}
-			);
-			break;
-		} catch ( error ) {
-			if ( attempt === 4 ) {
-				throw error;
-			}
+		await migrationPage.waitForTimeout( attempt === 1 ? 2200 : 1400 );
+		migrationCookieValue = await migrationPage.evaluate(
+			( key ) =>
+				document.cookie
+					.split( ';' )
+					.map( ( entry ) => entry.trim() )
+					.find( ( entry ) => entry.startsWith( `${ key }=` ) )
+					?.split( '=' )[ 1 ] ?? null,
+			migrationCookieKey
+		);
 
-			await migrationPage.goto( migrationUrl, {
-				waitUntil: 'domcontentloaded',
-			} );
+		if ( migrationCookieValue === 'b' ) {
+			break;
 		}
+
+		if ( attempt === 4 ) {
+			const migrationDebug = await migrationPage.evaluate(
+				( storageKey ) => ( {
+					cookie: document.cookie,
+					htmlVariantMarkerCount: (
+						document.documentElement.innerHTML.match(
+							/data-abtest-variant=/g
+						) ?? []
+					).length,
+					legacyStorageValue:
+						window.localStorage.getItem( storageKey ) ?? null,
+					runtimeError:
+						document
+							.querySelector(
+								'.wp-block-abtest-block-test__runtime-error'
+							)
+							?.textContent?.trim() ?? '',
+				} ),
+				`abtest:${ migrationPostId }:e2emigration1`
+			);
+
+			throw new Error(
+				`Expected legacy localStorage sticky assignment to migrate into a first-party cookie. ${ JSON.stringify(
+					migrationDebug
+				) }`
+			);
+		}
+
+		await migrationPage.goto( migrationUrl, {
+			waitUntil: 'domcontentloaded',
+		} );
 	}
 
 	await migrationPage.goto( migrationUrl, {
