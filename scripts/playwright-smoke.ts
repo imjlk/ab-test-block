@@ -149,6 +149,55 @@ function buildExperimentBlock( {
 	) }<!-- /wp:abtest-block/test -->`;
 }
 
+function buildSingleVariantExperimentBlock( {
+	blockInstanceId,
+	experimentId,
+	experimentLabel,
+	previewQueryKey,
+	variantABody,
+}: {
+	blockInstanceId: string;
+	experimentId: string;
+	experimentLabel: string;
+	previewQueryKey: string;
+	variantABody: string;
+} ) {
+	const attributes = {
+		automaticMetric: 'ctr',
+		blockInstanceId,
+		emitBrowserEvents: true,
+		emitClarityHook: false,
+		emitDataLayer: false,
+		emitKexpLayer: false,
+		evaluationWindowDays: 14,
+		experimentId,
+		experimentLabel,
+		frontRenderMode: 'dom-prune',
+		lockWinnerAfterSelection: true,
+		minimumClicksPerVariant: 1,
+		minimumImpressionsPerVariant: 100,
+		previewQueryKey,
+		showRuntimeLabel: false,
+		stickyAssignment: true,
+		stickyScope: 'instance',
+		trackClicks: true,
+		trackImpressions: true,
+		variantCount: 2,
+		weights: {
+			a: 50,
+			b: 50,
+		},
+		winnerMode: 'off',
+	};
+
+	return `<!-- wp:abtest-block/test ${ JSON.stringify(
+		attributes
+	) } -->${ buildVariantBlock(
+		'a',
+		buildParagraph( variantABody )
+	) }<!-- /wp:abtest-block/test -->`;
+}
+
 async function launchContext( initScript?: () => void ) {
 	const browser = await chromium.launch( { headless: true } );
 	const context = await browser.newContext();
@@ -661,6 +710,16 @@ async function getVisibleVariantTexts( page: Page ) {
 }
 
 async function runCoreSmoke( statsPostId: number ) {
+	const malformedDomPrunePostId = createFixturePost(
+		'E2E DOM Prune Fallback Fixture',
+		buildSingleVariantExperimentBlock( {
+			blockInstanceId: 'e2eprunefallback1',
+			experimentId: 'e2e_dom_prune_fallback_fixture',
+			experimentLabel: 'DOM Prune Fallback Fixture',
+			previewQueryKey: 'ab_e2e_dom_prune_fallback_fixture',
+			variantABody: 'DOM Prune Fallback Variant A body',
+		} )
+	);
 	const cssHidePostId = createFixturePost(
 		'E2E CSS Hide Fixture',
 		buildExperimentBlock( {
@@ -745,6 +804,45 @@ async function runCoreSmoke( statsPostId: number ) {
 	assert(
 		visibleVariantTexts.length === 1,
 		'Expected exactly one active variant to be visible on the front end'
+	);
+
+	const malformedDomPruneContext = await launchContext();
+	const malformedDomPrunePage = await malformedDomPruneContext.newPage();
+
+	await malformedDomPrunePage.goto(
+		`${ BASE_URL }/?p=${ malformedDomPrunePostId }&ab_e2e_dom_prune_fallback_fixture=b`,
+		{
+			waitUntil: 'domcontentloaded',
+		}
+	);
+	await malformedDomPrunePage.waitForTimeout( 2500 );
+
+	const malformedMarkup = await malformedDomPrunePage.content();
+	const malformedVisibleTexts = await getVisibleVariantTexts(
+		malformedDomPrunePage
+	);
+	const malformedRuntimeError =
+		( await malformedDomPrunePage
+			.locator( '.wp-block-abtest-block-test__runtime-error' )
+			.first()
+			.textContent() ) ?? '';
+
+	assert(
+		( malformedMarkup.match( /data-abtest-variant=/g ) ?? [] ).length === 1,
+		'Expected dom-prune fallback to keep exactly one variant marker in the front-end HTML when the requested variant is missing'
+	);
+	assert(
+		malformedVisibleTexts.length === 1 &&
+			malformedVisibleTexts[ 0 ]?.includes(
+				'DOM Prune Fallback Variant A body'
+			),
+		'Expected dom-prune fallback to render the first valid variant when the requested variant is missing'
+	);
+	assert(
+		malformedRuntimeError.includes(
+			'Requested Variant B could not be rendered. Showing Variant A instead.'
+		),
+		'Expected dom-prune fallback to expose a runtime error when it has to fall back to a different variant'
 	);
 
 	const dataLayer = ( await frontPage.evaluate(
@@ -921,34 +1019,81 @@ async function runCoreSmoke( statsPostId: number ) {
 	} );
 	let migrationVisibleTexts: string[] = [];
 	let migrationCookieValue: string | null = null;
+	const migrationCookieKey = getInstanceCookieName(
+		migrationPostId,
+		'e2emigration1'
+	);
 
-	for ( let attempt = 1; attempt <= 3; attempt += 1 ) {
-		await migrationPage.waitForTimeout( attempt === 1 ? 6000 : 3000 );
-		migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
-		migrationCookieValue = await migrationPage.evaluate(
-			( key ) =>
-				document.cookie
-					.split( ';' )
-					.map( ( entry ) => entry.trim() )
-					.find( ( entry ) => entry.startsWith( `${ key }=` ) )
-					?.split( '=' )[ 1 ] ?? null,
-			getInstanceCookieName( migrationPostId, 'e2emigration1' )
-		);
+	for ( let attempt = 1; attempt <= 4; attempt += 1 ) {
+		try {
+			await migrationPage.waitForFunction(
+				( payload ) => {
+					const cookieValue =
+						document.cookie
+							.split( ';' )
+							.map( ( entry ) => entry.trim() )
+							.find( ( entry ) =>
+								entry.startsWith( `${ payload.cookieKey }=` )
+							)
+							?.split( '=' )[ 1 ] ?? null;
+					const visibleTexts = Array.from(
+						document.querySelectorAll< HTMLElement >(
+							'.wp-block-abtest-block-variant'
+						)
+					)
+						.filter( ( element ) => {
+							const styles = window.getComputedStyle( element );
+							return (
+								styles.display !== 'none' &&
+								styles.visibility !== 'hidden' &&
+								element.offsetParent !== null
+							);
+						} )
+						.map(
+							( element ) => element.textContent?.trim() ?? ''
+						);
 
-		if (
-			migrationCookieValue === 'b' &&
-			migrationVisibleTexts.length === 1 &&
-			migrationVisibleTexts[ 0 ]?.includes(
-				'Legacy Migration Variant B body'
-			)
-		) {
+					return (
+						cookieValue === 'b' &&
+						visibleTexts.length === 1 &&
+						visibleTexts[ 0 ]?.includes( payload.expectedText ) &&
+						(
+							document.documentElement.innerHTML.match(
+								/data-abtest-variant=/g
+							) ?? []
+						).length === 1
+					);
+				},
+				{
+					cookieKey: migrationCookieKey,
+					expectedText: 'Legacy Migration Variant B body',
+				},
+				{
+					timeout: attempt === 1 ? 8000 : 5000,
+				}
+			);
 			break;
-		}
+		} catch ( error ) {
+			if ( attempt === 4 ) {
+				throw error;
+			}
 
-		await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
-			waitUntil: 'domcontentloaded',
-		} );
+			await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+				waitUntil: 'domcontentloaded',
+			} );
+		}
 	}
+
+	migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
+	migrationCookieValue = await migrationPage.evaluate(
+		( key ) =>
+			document.cookie
+				.split( ';' )
+				.map( ( entry ) => entry.trim() )
+				.find( ( entry ) => entry.startsWith( `${ key }=` ) )
+				?.split( '=' )[ 1 ] ?? null,
+		migrationCookieKey
+	);
 	assert(
 		migrationCookieValue === 'b',
 		'Expected legacy localStorage sticky assignment to migrate into a first-party cookie'
