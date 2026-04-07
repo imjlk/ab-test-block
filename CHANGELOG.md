@@ -1,5 +1,20 @@
 # ab-test-block
 
+## 0.3.3 — 2026-04-07
+
+### Patch changes
+
+- [206fdd0](https://github.com/imjlk/ab-test-block/commit/206fdd0bcd7b934d44d45b6efba7c98c6390bec9) Changed: the front end now defaults to `dom-prune`, so only the active variant is rendered into the live HTML unless a block is explicitly switched to `CSS hide` mode for compatibility.
+  
+  Changed: sticky assignment is now cookie-first, with a one-release migration path that promotes existing browser `localStorage` assignments into first-party cookies.
+  
+  Added: a shared runtime label toggle for both the editor and front end, plus new front-end rendering controls in the inspector and block toolbar. — Thanks @imjlk!
+- [b8efa72](https://github.com/imjlk/ab-test-block/commit/b8efa729e1b4db911221e650de5b404c3918a9f0) Changed: finalized the Block Directory submission polish by unifying the canonical A/B demo fixture across block examples, Playground content, and WordPress.org screenshots.
+  
+  Added: local visual parity baselines and screenshot sync tooling so editor and front-end presentation can stay aligned as the block evolves.
+  
+  Changed: polished editor copy and toolbar accessibility cues without changing tracking semantics or public APIs. — Thanks @imjlk!
+
 ## 0.3.2 — 2026-04-03
 
 ### Patch changes
