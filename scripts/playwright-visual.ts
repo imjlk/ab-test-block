@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import pixelmatch from 'pixelmatch';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
+import { PNG } from 'pngjs';
 
 import { buildCanonicalExperimentMarkup } from './canonical-demo';
 
@@ -300,6 +302,39 @@ function compareOrWriteBaseline( fileName: string, outputDirectory: string ) {
 	if ( UPDATE_BASELINES ) {
 		const buffer = readFileSync( currentPath );
 		writeFileSync( baselinePath, buffer );
+		return;
+	}
+
+	if ( VISUAL_SUBSET === 'front-a' ) {
+		const baselineImage = PNG.sync.read( readFileSync( baselinePath ) );
+		const currentImage = PNG.sync.read( readFileSync( currentPath ) );
+
+		assert(
+			baselineImage.width === currentImage.width &&
+				baselineImage.height === currentImage.height,
+			`Visual baseline dimensions changed for ${ fileName }. Re-run bun run visual:e2e:update if the change is intentional.`
+		);
+
+		const totalPixels = baselineImage.width * baselineImage.height;
+		const allowedDiffPixels = Math.max(
+			500,
+			Math.floor( totalPixels * 0.01 )
+		);
+		const diffPixels = pixelmatch(
+			baselineImage.data,
+			currentImage.data,
+			null,
+			baselineImage.width,
+			baselineImage.height,
+			{
+				threshold: 0.1,
+			}
+		);
+
+		assert(
+			diffPixels <= allowedDiffPixels,
+			`Visual baseline mismatch for ${ fileName }. Observed ${ diffPixels } differing pixels (allowed ${ allowedDiffPixels }). Re-run bun run visual:e2e:update if the change is intentional.`
+		);
 		return;
 	}
 
