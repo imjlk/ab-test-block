@@ -212,6 +212,10 @@ export function sanitizeExperimentAttributes(
 		),
 		experimentId,
 		experimentLabel,
+		frontRenderMode:
+			attributes.frontRenderMode === 'css-hide'
+				? 'css-hide'
+				: DEFAULT_EXPERIMENT_ATTRIBUTES.frontRenderMode,
 		lockWinnerAfterSelection:
 			typeof attributes.lockWinnerAfterSelection === 'boolean'
 				? attributes.lockWinnerAfterSelection
@@ -233,6 +237,10 @@ export function sanitizeExperimentAttributes(
 			DEFAULT_EXPERIMENT_ATTRIBUTES.minimumImpressionsPerVariant
 		),
 		previewQueryKey,
+		showRuntimeLabel:
+			typeof attributes.showRuntimeLabel === 'boolean'
+				? attributes.showRuntimeLabel
+				: DEFAULT_EXPERIMENT_ATTRIBUTES.showRuntimeLabel,
 		stickyAssignment:
 			typeof attributes.stickyAssignment === 'boolean'
 				? attributes.stickyAssignment

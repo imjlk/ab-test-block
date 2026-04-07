@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 
 type SmokeMode = 'core' | 'editor' | 'full';
+type FrontRenderMode = 'css-hide' | 'dom-prune';
 type StickyScope = 'experiment' | 'instance';
 type VariantKey = 'a' | 'b';
 
@@ -91,6 +92,8 @@ function buildExperimentBlock( {
 	experimentId,
 	experimentLabel,
 	emitDataLayer = false,
+	frontRenderMode = 'dom-prune',
+	showRuntimeLabel = false,
 	stickyAssignment = true,
 	stickyScope = 'instance',
 	variantABody,
@@ -100,6 +103,8 @@ function buildExperimentBlock( {
 	experimentId: string;
 	experimentLabel: string;
 	emitDataLayer?: boolean;
+	frontRenderMode?: FrontRenderMode;
+	showRuntimeLabel?: boolean;
 	stickyAssignment?: boolean;
 	stickyScope?: StickyScope;
 	variantABody: string;
@@ -115,10 +120,12 @@ function buildExperimentBlock( {
 		evaluationWindowDays: 14,
 		experimentId,
 		experimentLabel,
+		frontRenderMode,
 		lockWinnerAfterSelection: true,
 		minimumClicksPerVariant: 1,
 		minimumImpressionsPerVariant: 100,
 		previewQueryKey: `ab_${ experimentId }`,
+		showRuntimeLabel,
 		stickyAssignment,
 		stickyScope,
 		trackClicks: true,
@@ -193,6 +200,14 @@ function createFrontInitScript() {
 	};
 }
 
+function getInstanceCookieName( postId: number, blockInstanceId: string ) {
+	return `abtest_${ postId }_${ blockInstanceId }`;
+}
+
+function getExperimentCookieName( experimentId: string ) {
+	return `abtest_exp_${ experimentId }`;
+}
+
 async function waitForFrontStatsEvent( page: Page ) {
 	const attempts = 3;
 
@@ -236,6 +251,14 @@ async function waitForFrontStatsEvent( page: Page ) {
 							entry.key.startsWith( 'abtest:' ) ||
 							entry.key.startsWith( 'abtest-exp:' )
 					);
+					const stickyCookies = document.cookie
+						.split( ';' )
+						.map( ( entry ) => entry.trim() )
+						.filter(
+							( entry ) =>
+								entry.startsWith( 'abtest_' ) ||
+								entry.startsWith( 'abtest_exp_' )
+						);
 
 					return {
 						dataLayerEvents: (
@@ -253,12 +276,16 @@ async function waitForFrontStatsEvent( page: Page ) {
 								'.wp-block-abtest-block-test'
 							)
 						).map( ( element ) => ( {
+							frontRenderMode: element.getAttribute(
+								'data-abtest-front-render-mode'
+							),
 							ready: element.getAttribute( 'data-abtest-ready' ),
 							runtimeLabel:
 								element.querySelector(
 									'.wp-block-abtest-block-test__runtime-label'
 								)?.textContent ?? null,
 						} ) ),
+						stickyCookies,
 						stickyLocalStorage,
 						title: document.title,
 					};
@@ -634,6 +661,32 @@ async function getVisibleVariantTexts( page: Page ) {
 }
 
 async function runCoreSmoke( statsPostId: number ) {
+	const cssHidePostId = createFixturePost(
+		'E2E CSS Hide Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2ecsshide1',
+			experimentId: 'e2e_css_hide_fixture',
+			experimentLabel: 'CSS Hide Fixture',
+			frontRenderMode: 'css-hide',
+			showRuntimeLabel: true,
+			stickyAssignment: true,
+			stickyScope: 'instance',
+			variantABody: 'CSS Hide Variant A body',
+			variantBBody: 'CSS Hide Variant B body',
+		} )
+	);
+	const migrationPostId = createFixturePost(
+		'E2E Legacy Sticky Migration',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2emigration1',
+			experimentId: 'e2e_legacy_migration_fixture',
+			experimentLabel: 'Legacy Migration Fixture',
+			stickyAssignment: true,
+			stickyScope: 'instance',
+			variantABody: 'Legacy Migration Variant A body',
+			variantBBody: 'Legacy Migration Variant B body',
+		} )
+	);
 	const nonStickyPostId = createFixturePost(
 		'E2E Non Sticky Fixture',
 		buildExperimentBlock( {
@@ -678,6 +731,10 @@ async function runCoreSmoke( statsPostId: number ) {
 		waitUntil: 'domcontentloaded',
 	} );
 	await waitForFrontStatsEvent( frontPage );
+	assert(
+		( await frontPage.locator( '[data-abtest-variant]' ).count() ) === 1,
+		'Expected dom-prune mode to keep only one variant in the front-end DOM'
+	);
 
 	const visibleVariantTexts = await getVisibleVariantTexts( frontPage );
 	assert(
@@ -747,12 +804,17 @@ async function runCoreSmoke( statsPostId: number ) {
 	);
 
 	const instanceStickyValue = await frontPage.evaluate(
-		( key ) => window.localStorage.getItem( key ),
-		`abtest:${ statsPostId }:e2einstats1`
+		( key ) =>
+			document.cookie
+				.split( ';' )
+				.map( ( entry ) => entry.trim() )
+				.find( ( entry ) => entry.startsWith( `${ key }=` ) )
+				?.split( '=' )[ 1 ] ?? null,
+		getInstanceCookieName( statsPostId, 'e2einstats1' )
 	);
 	assert(
 		instanceStickyValue === 'a' || instanceStickyValue === 'b',
-		'Expected instance sticky assignment to be stored in localStorage'
+		'Expected instance sticky assignment to be stored in a first-party cookie'
 	);
 
 	const nonStickyContext = await launchContext();
@@ -763,12 +825,16 @@ async function runCoreSmoke( statsPostId: number ) {
 	} );
 	await nonStickyPage.waitForTimeout( 2500 );
 	const nonStickyValue = await nonStickyPage.evaluate(
-		( key ) => window.localStorage.getItem( key ),
-		`abtest:${ nonStickyPostId }:e2enonsticky1`
+		( key ) =>
+			document.cookie
+				.split( ';' )
+				.map( ( entry ) => entry.trim() )
+				.find( ( entry ) => entry.startsWith( `${ key }=` ) ) ?? null,
+		getInstanceCookieName( nonStickyPostId, 'e2enonsticky1' )
 	);
 	assert(
 		nonStickyValue === null,
-		'Expected stickyAssignment=false to avoid storing a sticky localStorage key'
+		'Expected stickyAssignment=false to avoid storing a sticky cookie'
 	);
 
 	const sharedContext = await launchContext();
@@ -778,9 +844,9 @@ async function runCoreSmoke( statsPostId: number ) {
 		waitUntil: 'domcontentloaded',
 	} );
 	await sharedPage.waitForTimeout( 1000 );
-	const sharedKey = 'abtest-exp:e2e_shared_scope_fixture';
+	const sharedKey = getExperimentCookieName( 'e2e_shared_scope_fixture' );
 	await sharedPage.evaluate( ( key ) => {
-		window.localStorage.setItem( key, 'b' );
+		document.cookie = `${ key }=b; path=/; max-age=2592000; samesite=lax`;
 	}, sharedKey );
 	await sharedPage.goto( `${ BASE_URL }/?p=${ sharedScopePostTwoId }`, {
 		waitUntil: 'domcontentloaded',
@@ -793,6 +859,77 @@ async function runCoreSmoke( statsPostId: number ) {
 				'Shared Scope Two Variant B body'
 			),
 		'Expected experiment-scope sticky assignment to carry across posts with the same experimentId'
+	);
+
+	const cssHideContext = await launchContext();
+	const cssHidePage = await cssHideContext.newPage();
+
+	await cssHidePage.goto( `${ BASE_URL }/?p=${ cssHidePostId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await cssHidePage.waitForTimeout( 2500 );
+	assert(
+		( await cssHidePage.locator( '[data-abtest-variant]' ).count() ) === 2,
+		'Expected css-hide mode to keep both variants in the front-end DOM'
+	);
+	assert(
+		( await getVisibleVariantTexts( cssHidePage ) ).length === 1,
+		'Expected css-hide mode to keep exactly one visible active variant after hydration'
+	);
+	await cssHidePage.waitForFunction(
+		() =>
+			(
+				document.querySelector(
+					'.wp-block-abtest-block-test__runtime-label'
+				) as HTMLElement | null
+			 )?.textContent?.includes( 'e2e_css_hide_fixture:' ) ?? false,
+		undefined,
+		{ timeout: 15000 }
+	);
+	const cssHideRuntimeLabel =
+		( await cssHidePage
+			.locator( '.wp-block-abtest-block-test__runtime-label' )
+			.first()
+			.textContent() ) ?? '';
+	assert(
+		cssHideRuntimeLabel.includes( 'e2e_css_hide_fixture:' ),
+		'Expected showRuntimeLabel=true to expose the runtime label on the front end'
+	);
+
+	const migrationContext = await launchContext();
+	const migrationPage = await migrationContext.newPage();
+
+	await migrationPage.goto( BASE_URL, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await migrationPage.evaluate( ( key ) => {
+		window.localStorage.setItem( key, 'b' );
+	}, `abtest:${ migrationPostId }:e2emigration1` );
+
+	await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await migrationPage.waitForTimeout( 6000 );
+	const migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
+	const migrationCookieValue = await migrationPage.evaluate(
+		( key ) =>
+			document.cookie
+				.split( ';' )
+				.map( ( entry ) => entry.trim() )
+				.find( ( entry ) => entry.startsWith( `${ key }=` ) )
+				?.split( '=' )[ 1 ] ?? null,
+		getInstanceCookieName( migrationPostId, 'e2emigration1' )
+	);
+	assert(
+		migrationCookieValue === 'b',
+		'Expected legacy localStorage sticky assignment to migrate into a first-party cookie'
+	);
+	assert(
+		migrationVisibleTexts.length === 1 &&
+			migrationVisibleTexts[ 0 ].includes(
+				'Legacy Migration Variant B body'
+			),
+		'Expected legacy localStorage migration to preserve the prior sticky variant in dom-prune mode'
 	);
 }
 
@@ -1004,6 +1141,45 @@ async function runEditorSmoke( statsPostId: number ) {
 			'Skipping Experiment ID editor smoke check because the Identity & Preview panel control text was not discoverable in this editor session.'
 		);
 	}
+
+	const renderingSidebar = await openSidebarPanel(
+		adminPage,
+		'Front-end Rendering'
+	);
+	await renderingSidebar.getByLabel( 'Show runtime label' ).click();
+	await adminPage.waitForTimeout( 300 );
+	await frame
+		.locator( '.wp-block-abtest-block-test__runtime-label' )
+		.first()
+		.waitFor( {
+			state: 'visible',
+			timeout: 5000,
+		} );
+	assert(
+		(
+			( await frame
+				.locator( '.wp-block-abtest-block-test__runtime-label' )
+				.first()
+				.textContent() ) ?? ''
+		).includes( 'e2e_stats_fixture:' ),
+		'Expected the editor canvas to mirror the front-end runtime label when enabled'
+	);
+	const runtimeToolbarButton = adminPage.getByRole( 'button', {
+		name: 'Toggle runtime label',
+	} );
+	assert(
+		( await runtimeToolbarButton.getAttribute( 'aria-pressed' ) ) ===
+			'true',
+		'Expected the runtime label toolbar toggle to stay in sync with the inspector control'
+	);
+	await runtimeToolbarButton.click();
+	await adminPage.waitForTimeout( 300 );
+	assert(
+		( await frame
+			.locator( '.wp-block-abtest-block-test__runtime-label' )
+			.count() ) === 0,
+		'Expected the toolbar runtime label toggle to hide the mirrored editor label'
+	);
 }
 
 async function run() {

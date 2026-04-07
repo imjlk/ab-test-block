@@ -32,11 +32,14 @@ import {
 	sanitizeWinnerSnapshot,
 	sumWeights,
 } from '../../lib/experiment';
+import { formatRuntimeLabel } from '../../lib/runtime-label';
 import type {
 	AbTestExperimentAttributes,
+	AssignmentSource,
 	AbTestStatsResponse,
 	AbTestStatsScopeSnapshot,
 	AbTestWinnerEvaluationSnapshot,
+	FrontRenderMode,
 	StickyScope,
 	VariantCount,
 	VariantKey,
@@ -279,6 +282,11 @@ export default function Edit( {
 		previewMode,
 		winnerPreviewState
 	);
+	const runtimeLabelSource = getRuntimeLabelSource(
+		normalizedAttributes,
+		previewMode,
+		winnerPreviewState
+	);
 	const stickyLabel = getStickyLabel( normalizedAttributes );
 	const updateAttribute = useMemo(
 		() =>
@@ -337,6 +345,21 @@ export default function Edit( {
 		}
 
 		if (
+			attributes.frontRenderMode !== normalizedAttributes.frontRenderMode
+		) {
+			nextAttributes.frontRenderMode =
+				normalizedAttributes.frontRenderMode;
+		}
+
+		if (
+			attributes.showRuntimeLabel !==
+			normalizedAttributes.showRuntimeLabel
+		) {
+			nextAttributes.showRuntimeLabel =
+				normalizedAttributes.showRuntimeLabel;
+		}
+
+		if (
 			! haveSameWeights(
 				attributes.weights,
 				normalizedAttributes.weights,
@@ -357,16 +380,20 @@ export default function Edit( {
 		attributes.blockInstanceId,
 		attributes.experimentId,
 		attributes.experimentLabel,
+		attributes.frontRenderMode,
 		attributes.manualWinner,
 		attributes.previewQueryKey,
+		attributes.showRuntimeLabel,
 		attributes.stickyScope,
 		attributes.weights,
 		clientId,
 		normalizedAttributes.blockInstanceId,
 		normalizedAttributes.experimentId,
 		normalizedAttributes.experimentLabel,
+		normalizedAttributes.frontRenderMode,
 		normalizedAttributes.manualWinner,
 		normalizedAttributes.previewQueryKey,
+		normalizedAttributes.showRuntimeLabel,
 		normalizedAttributes.stickyScope,
 		normalizedAttributes.variantCount,
 		normalizedAttributes.weights,
@@ -632,6 +659,16 @@ export default function Edit( {
 		previewMode === 'winner'
 			? __( 'Winner preview', 'ab-test-block' )
 			: __( 'Traffic mode', 'ab-test-block' );
+	const runtimeLabelText =
+		normalizedAttributes.showRuntimeLabel &&
+		runtimeLabelSource &&
+		activePreviewVariantKey
+			? formatRuntimeLabel(
+					normalizedAttributes.experimentId,
+					activePreviewVariantKey,
+					runtimeLabelSource
+			  )
+			: undefined;
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
@@ -685,6 +722,21 @@ export default function Edit( {
 						onClick={ previewWinnerMode }
 					>
 						{ __( 'Winner', 'ab-test-block' ) }
+					</ToolbarButton>
+				</ToolbarGroup>
+				<ToolbarGroup>
+					<ToolbarButton
+						isPressed={ normalizedAttributes.showRuntimeLabel }
+						label={ __( 'Toggle runtime label', 'ab-test-block' ) }
+						showTooltip
+						onClick={ () =>
+							updateAttribute(
+								'showRuntimeLabel',
+								! normalizedAttributes.showRuntimeLabel
+							)
+						}
+					>
+						{ __( 'Debug label', 'ab-test-block' ) }
 					</ToolbarButton>
 				</ToolbarGroup>
 				<ToolbarGroup>
@@ -1003,7 +1055,7 @@ export default function Edit( {
 						help={
 							normalizedAttributes.stickyAssignment
 								? __(
-										'Keeps the assigned variant stable for the current browser using localStorage.',
+										'Keeps the assigned variant stable for the current browser using a first-party cookie.',
 										'ab-test-block'
 								  )
 								: __(
@@ -1049,6 +1101,53 @@ export default function Edit( {
 							}
 						/>
 					) }
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Front-end Rendering', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
+					<SelectControl
+						label={ __( 'Front render mode', 'ab-test-block' ) }
+						value={ normalizedAttributes.frontRenderMode }
+						options={ [
+							{
+								label: __( 'DOM prune', 'ab-test-block' ),
+								value: 'dom-prune',
+							},
+							{
+								label: __( 'CSS hide', 'ab-test-block' ),
+								value: 'css-hide',
+							},
+						] }
+						onChange={ ( value ) =>
+							updateAttribute(
+								'frontRenderMode',
+								value as FrontRenderMode
+							)
+						}
+						help={
+							normalizedAttributes.frontRenderMode === 'css-hide'
+								? __(
+										'Render every variant into the front-end DOM and hide inactive variants after hydration.',
+										'ab-test-block'
+								  )
+								: __(
+										'Render only the active variant into the front-end HTML. This is the default mode.',
+										'ab-test-block'
+								  )
+						}
+					/>
+					<ToggleControl
+						label={ __( 'Show runtime label', 'ab-test-block' ) }
+						checked={ normalizedAttributes.showRuntimeLabel }
+						onChange={ ( value ) =>
+							updateAttribute( 'showRuntimeLabel', value )
+						}
+						help={ __(
+							'Show the same runtime/debug label in both the editor preview and the front end.',
+							'ab-test-block'
+						) }
+					/>
 				</PanelBody>
 				<PanelBody
 					title={ __( 'Traffic Allocation', 'ab-test-block' ) }
@@ -1450,6 +1549,11 @@ export default function Edit( {
 					className: 'wp-block-abtest-block-test',
 				} ) }
 			>
+				{ runtimeLabelText && (
+					<p className="wp-block-abtest-block-test__runtime-label">
+						{ runtimeLabelText }
+					</p>
+				) }
 				<div className="wp-block-abtest-block-test__inline-notices">
 					{ previewMode === 'winner' &&
 						! winnerPreviewState.variant && (
@@ -1737,6 +1841,34 @@ function getStickyLabel( attributes: AbTestExperimentAttributes ) {
 	}
 
 	return String( __( 'Sticky page block', 'ab-test-block' ) );
+}
+
+function getRuntimeLabelSource(
+	attributes: AbTestExperimentAttributes,
+	previewMode: EditorPreviewMode,
+	winnerPreviewState: WinnerPreviewState
+): AssignmentSource | undefined {
+	if ( previewMode === 'winner' ) {
+		if ( winnerPreviewState.source === 'manual-winner' ) {
+			return 'manual-winner';
+		}
+
+		if ( winnerPreviewState.source === 'automatic-winner-locked' ) {
+			return 'locked-winner';
+		}
+
+		if ( winnerPreviewState.source === 'automatic-candidate' ) {
+			return 'automatic-winner';
+		}
+
+		return undefined;
+	}
+
+	if ( ! attributes.stickyAssignment ) {
+		return 'weighted-random';
+	}
+
+	return 'sticky';
 }
 
 function renderStatsCard( title: string, snapshot: AbTestStatsScopeSnapshot ) {

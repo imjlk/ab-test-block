@@ -8,6 +8,7 @@ import {
 	sanitizeWinnerSnapshot,
 } from '../../lib/experiment';
 import { isVariantKey } from '../../lib/ids';
+import { formatRuntimeLabel } from '../../lib/runtime-label';
 import type {
 	AbTestBrowserEventPayload,
 	AbTestBrowserStatsPayload,
@@ -72,17 +73,20 @@ const { state } = store( 'abtest-block', {
 			state.assignment = assignment.variant;
 			state.assignmentSource = assignment.source;
 			state.isPreview = assignment.preview;
-			state.debugLabel = buildDebugLabel(
-				context,
-				assignment.variant,
-				assignment.source
-			);
+			state.debugLabel = context.showRuntimeLabel
+				? formatRuntimeLabel(
+						context.experimentId,
+						assignment.variant,
+						assignment.source
+				  )
+				: undefined;
+			syncRuntimeLabel( element );
 			state.isReady = true;
 			element.dataset.abtestReady = 'true';
-			const activeVariantElement = applyVariantVisibility(
-				element,
-				assignment.variant
-			);
+			const activeVariantElement =
+				context.frontRenderMode === 'css-hide'
+					? applyVariantVisibility( element, assignment.variant )
+					: findActiveVariantElement( element, assignment.variant );
 			attachClickListener( element, context );
 			emitEventOutputs(
 				context,
@@ -128,6 +132,60 @@ const { state } = store( 'abtest-block', {
 } );
 
 function resolveAssignment( context: AbTestViewContext ): {
+	preview: boolean;
+	source: AssignmentSource;
+	variant: VariantKey;
+} {
+	const serverAssignment = getServerResolvedAssignment( context );
+	const migratedAssignment = maybePromoteLegacyStickyAssignment(
+		context,
+		serverAssignment
+	);
+
+	if ( migratedAssignment.reloaded ) {
+		return (
+			serverAssignment ?? {
+				preview: false,
+				source: 'weighted-random',
+				variant: context.variantKeys[ 0 ],
+			}
+		);
+	}
+
+	if ( migratedAssignment.assignment ) {
+		return migratedAssignment.assignment;
+	}
+
+	if ( serverAssignment ) {
+		return serverAssignment;
+	}
+
+	return resolveAssignmentFallback( context );
+}
+
+function getServerResolvedAssignment( context: AbTestViewContext ):
+	| {
+			preview: boolean;
+			source: AssignmentSource;
+			variant: VariantKey;
+	  }
+	| undefined {
+	if (
+		! isVariantKey( context.resolvedVariant ) ||
+		! context.variantKeys.includes( context.resolvedVariant ) ||
+		! isAssignmentSource( context.resolvedSource )
+	) {
+		return undefined;
+	}
+
+	return {
+		preview: Boolean( context.isPreview ),
+		source: context.resolvedSource,
+		variant: context.resolvedVariant,
+	};
+}
+
+function resolveAssignmentFallback( context: AbTestViewContext ): {
 	preview: boolean;
 	source: AssignmentSource;
 	variant: VariantKey;
@@ -187,6 +245,79 @@ function resolveAssignment( context: AbTestViewContext ): {
 	};
 }
 
+function maybePromoteLegacyStickyAssignment(
+	context: AbTestViewContext,
+	serverAssignment:
+		| {
+				preview: boolean;
+				source: AssignmentSource;
+				variant: VariantKey;
+		  }
+		| undefined
+): {
+	assignment?:
+		| {
+				preview: boolean;
+				source: AssignmentSource;
+				variant: VariantKey;
+		  }
+		| undefined;
+	reloaded?: boolean;
+} {
+	if (
+		typeof window === 'undefined' ||
+		! context.stickyAssignment ||
+		! context.stickyCookieName ||
+		! context.stickyStorageKey ||
+		( serverAssignment &&
+			serverAssignment.source !== 'sticky' &&
+			serverAssignment.source !== 'weighted-random' )
+	) {
+		return { assignment: serverAssignment };
+	}
+
+	if ( readStickyCookie( context ) ) {
+		return { assignment: serverAssignment };
+	}
+
+	const legacyVariant = readLegacyStickyAssignment( context );
+
+	if ( ! legacyVariant ) {
+		return { assignment: serverAssignment };
+	}
+
+	persistStickyAssignment( context, legacyVariant );
+
+	if ( context.frontRenderMode === 'css-hide' ) {
+		return {
+			assignment: {
+				preview: false,
+				source: 'sticky',
+				variant: legacyVariant,
+			},
+		};
+	}
+
+	if (
+		serverAssignment &&
+		serverAssignment.variant !== legacyVariant &&
+		shouldReloadAfterLegacyMigration( context )
+	) {
+		window.location.reload();
+		return { reloaded: true };
+	}
+
+	return {
+		assignment:
+			serverAssignment && serverAssignment.variant === legacyVariant
+				? {
+						...serverAssignment,
+						source: 'sticky',
+				  }
+				: serverAssignment,
+	};
+}
+
 function resolvePreviewVariant(
 	context: AbTestViewContext
 ): VariantKey | undefined {
@@ -221,6 +352,18 @@ function resolvePreviewVariant(
 function getStickyAssignment(
 	context: AbTestViewContext
 ): VariantKey | undefined {
+	const stickyCookieVariant = readStickyCookie( context );
+
+	if ( stickyCookieVariant ) {
+		return stickyCookieVariant;
+	}
+
+	return readLegacyStickyAssignment( context );
+}
+
+function readLegacyStickyAssignment(
+	context: AbTestViewContext
+): VariantKey | undefined {
 	if ( typeof window === 'undefined' || ! context.stickyStorageKey ) {
 		return undefined;
 	}
@@ -242,16 +385,59 @@ function getStickyAssignment(
 	return undefined;
 }
 
+function readStickyCookie(
+	context: AbTestViewContext
+): VariantKey | undefined {
+	if ( typeof document === 'undefined' || ! context.stickyCookieName ) {
+		return undefined;
+	}
+
+	const cookieEntry = document.cookie
+		.split( ';' )
+		.map( ( entry ) => entry.trim() )
+		.find( ( entry ) =>
+			entry.startsWith( `${ context.stickyCookieName }=` )
+		);
+
+	if ( ! cookieEntry ) {
+		return undefined;
+	}
+
+	const value = decodeURIComponent(
+		cookieEntry.slice( context.stickyCookieName.length + 1 )
+	);
+
+	return isVariantKey( value ) && context.variantKeys.includes( value )
+		? value
+		: undefined;
+}
+
 function persistStickyAssignment(
 	context: AbTestViewContext,
 	variant: VariantKey
 ) {
-	if ( typeof window === 'undefined' || ! context.stickyStorageKey ) {
+	if ( typeof document === 'undefined' || ! context.stickyCookieName ) {
 		return;
 	}
 
 	try {
-		window.localStorage.setItem( context.stickyStorageKey, variant );
+		const segments = [
+			`${ context.stickyCookieName }=${ encodeURIComponent( variant ) }`,
+			'path=/',
+			`max-age=${
+				Math.max( 1, Number( context.stickyCookieTtlDays ?? 30 ) ) *
+				24 *
+				60 *
+				60
+			}`,
+			'samesite=lax',
+		];
+
+		if ( window.location.protocol === 'https:' ) {
+			segments.push( 'secure' );
+		}
+
+		document.cookie = segments.join( '; ' );
 	} catch ( error ) {
 		void error;
 	}
@@ -280,6 +466,32 @@ function applyVariantVisibility(
 	} );
 
 	return activeVariantElement;
+}
+
+function findActiveVariantElement(
+	element: HTMLElement,
+	activeVariant: VariantKey
+): HTMLElement | undefined {
+	return (
+		element.querySelector< HTMLElement >(
+			`[data-abtest-variant="${ activeVariant }"]`
+		) ??
+		element.querySelector< HTMLElement >( '[data-abtest-variant]' ) ??
+		undefined
+	);
+}
+
+function syncRuntimeLabel( element: HTMLElement ) {
+	const runtimeLabelElement = element.querySelector< HTMLElement >(
+		'.wp-block-abtest-block-test__runtime-label'
+	);
+
+	if ( ! runtimeLabelElement ) {
+		return;
+	}
+
+	runtimeLabelElement.textContent = state.debugLabel ?? '';
+	runtimeLabelElement.hidden = ! state.debugLabel;
 }
 
 async function maybeTrackClick( event: Event, context: AbTestViewContext ) {
@@ -707,16 +919,6 @@ function emitStatsOutputs(
 	}
 }
 
-function buildDebugLabel(
-	context: AbTestViewContext,
-	variant: VariantKey,
-	source: AssignmentSource
-) {
-	return `${
-		context.experimentId
-	}: Variant ${ variant.toUpperCase() } (${ source })`;
-}
-
 function attachClickListener(
 	element: HTMLElement,
 	context: AbTestViewContext
@@ -788,4 +990,35 @@ function getPageViewEventKey( blockInstanceId: string, eventType: EventType ) {
 			: `${ window.location.pathname }${ window.location.search }`;
 
 	return `${ blockInstanceId }:${ currentPath }:${ eventType }`;
+}
+
+function isAssignmentSource( value: unknown ): value is AssignmentSource {
+	return (
+		value === 'query-preview' ||
+		value === 'locked-winner' ||
+		value === 'manual-winner' ||
+		value === 'automatic-winner' ||
+		value === 'sticky' ||
+		value === 'weighted-random'
+	);
+}
+
+function shouldReloadAfterLegacyMigration( context: AbTestViewContext ) {
+	if ( typeof window === 'undefined' || ! context.stickyCookieName ) {
+		return false;
+	}
+
+	const markerKey = `abtest-migrated:${ context.stickyCookieName }`;
+
+	try {
+		if ( window.sessionStorage.getItem( markerKey ) === '1' ) {
+			return false;
+		}
+
+		window.sessionStorage.setItem( markerKey, '1' );
+		return true;
+	} catch ( error ) {
+		void error;
+		return false;
+	}
 }

@@ -275,6 +275,75 @@ return new class {
 						'type' => 'string'
 					]
 				],
+				'frontRenderMode' => [
+					'typia' => [
+						'constraints' => [
+							'exclusiveMaximum' => null,
+							'exclusiveMinimum' => null,
+							'format' => null,
+							'maxLength' => null,
+							'maxItems' => null,
+							'maximum' => null,
+							'minLength' => null,
+							'minItems' => null,
+							'minimum' => null,
+							'multipleOf' => null,
+							'pattern' => null,
+							'typeTag' => null
+						],
+						'defaultValue' => 'dom-prune',
+						'hasDefault' => true
+					],
+					'ts' => [
+						'items' => null,
+						'kind' => 'string',
+						'properties' => null,
+						'required' => true,
+						'union' => null
+					],
+					'wp' => [
+						'defaultValue' => 'dom-prune',
+						'enum' => [
+							'dom-prune',
+							'css-hide'
+						],
+						'hasDefault' => true,
+						'type' => 'string'
+					]
+				],
+				'showRuntimeLabel' => [
+					'typia' => [
+						'constraints' => [
+							'exclusiveMaximum' => null,
+							'exclusiveMinimum' => null,
+							'format' => null,
+							'maxLength' => null,
+							'maxItems' => null,
+							'maximum' => null,
+							'minLength' => null,
+							'minItems' => null,
+							'minimum' => null,
+							'multipleOf' => null,
+							'pattern' => null,
+							'typeTag' => null
+						],
+						'defaultValue' => false,
+						'hasDefault' => true
+					],
+					'ts' => [
+						'items' => null,
+						'kind' => 'boolean',
+						'properties' => null,
+						'required' => true,
+						'union' => null
+					],
+					'wp' => [
+						'defaultValue' => false,
+						'enum' => null,
+						'hasDefault' => true,
+						'type' => 'boolean'
+					]
+				],
 				'stickyAssignment' => [
 					'typia' => [
 						'constraints' => [

@@ -22,13 +22,15 @@ Features included in this version:
 * A/B and A/B/C authoring flows
 * Weighted traffic allocation with normalize and equalize controls
 * Query-string preview overrides
-* Sticky visitor assignment using browser localStorage
+* Sticky visitor assignment using first-party cookies
 * Optional shared-experiment sticky scope by Experiment ID
+* Front-end render modes for DOM pruning or CSS hide compatibility
 * Manual winner selection
 * CTR-based automatic winner reevaluation
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Debug stats for both the current block and shared experiment
+* Optional runtime label that can be shown in both the editor and front end
 * Read-only WP-CLI commands for experiment and winner-state inspection
 
 Not included:
@@ -46,7 +48,7 @@ Not included:
 == Screenshots ==
 
 1. The front end shows one active Variant at a time while impressions and CTA clicks are tracked in the background.
-2. The editor keeps the same shell styling so the active Variant stays close to the front-end presentation.
+2. The editor keeps the active Variant close to the front-end presentation while controls stay in the toolbar and inspector.
 
 == Frequently Asked Questions ==
 
@@ -72,11 +74,15 @@ An impression is counted only when the active variant stays at least 50% visible
 
 = How is sticky assignment stored? =
 
-This version uses browser localStorage only. By default the sticky key is scoped to the current page and block instance. You can optionally switch sticky scope to the shared Experiment ID so the same browser sees a consistent variant across multiple pages.
+This version uses first-party cookies. By default the sticky key is scoped to the current page and block instance. You can optionally switch sticky scope to the shared Experiment ID so the same browser sees a consistent variant across multiple pages. Existing localStorage keys are treated as a one-release migration fallback and are promoted into cookies on the front end.
+
+= How does the front end render inactive variants? =
+
+By default the block uses `dom-prune`, which means only the active variant is rendered into the front-end HTML. If you need compatibility with integrations that expect every variant to exist in the DOM, switch the block to `CSS hide` mode from the inspector.
 
 = Can the server inspect individual sticky visitors? =
 
-No. The server stores aggregate experiment stats only. Sticky assignment is browser localStorage state and is not individually queryable from the server.
+No. The server stores aggregate experiment stats only. Sticky assignment is browser cookie state and is not individually queryable from the server.
 
 = How can I disable tracking quickly? =
 

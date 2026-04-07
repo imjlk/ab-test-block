@@ -53,6 +53,18 @@
 			"minLength": 1,
 			"maxLength": 50
 		},
+		"frontRenderMode": {
+			"enum": [
+				"dom-prune",
+				"css-hide"
+			],
+			"default": "dom-prune",
+			"type": "string"
+		},
+		"showRuntimeLabel": {
+			"default": false,
+			"type": "boolean"
+		},
 		"stickyAssignment": {
 			"default": true,
 			"type": "boolean"
@@ -148,6 +160,8 @@
 		"variantCount",
 		"weights",
 		"previewQueryKey",
+		"frontRenderMode",
+		"showRuntimeLabel",
 		"stickyAssignment",
 		"stickyScope",
 		"winnerMode",

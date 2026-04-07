@@ -1,8 +1,13 @@
-@use "./surface";
-
 .wp-block-abtest-block-test {
+	position: relative;
 
-	@include surface.shell-surface;
+	&__runtime-label {
+		margin: 0 0 12px;
+		font-size: 12px;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: #7c5f26;
+	}
 
 	&__debug {
 		margin: 8px 0 0;

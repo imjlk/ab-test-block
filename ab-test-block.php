@@ -112,6 +112,183 @@ function ab_test_block_sanitize_variant_key( $variant_key, $variant_count ) {
 		: null;
 }
 
+function ab_test_block_get_front_render_mode( $front_render_mode ) {
+	return 'css-hide' === $front_render_mode ? 'css-hide' : 'dom-prune';
+}
+
+function ab_test_block_get_sticky_storage_key( $post_id, $block_instance_id, $experiment_id, $sticky_scope ) {
+	return 'experiment' === $sticky_scope
+		? sprintf(
+			'abtest-exp:%s',
+			(string) $experiment_id
+		)
+		: sprintf(
+			'abtest:%d:%s',
+			(int) $post_id,
+			(string) $block_instance_id
+		);
+}
+
+function ab_test_block_get_sticky_cookie_name( $post_id, $block_instance_id, $experiment_id, $sticky_scope ) {
+	if ( 'experiment' === $sticky_scope ) {
+		return 'abtest_exp_' . sanitize_key( (string) $experiment_id );
+	}
+
+	return sprintf(
+		'abtest_%d_%s',
+		(int) $post_id,
+		sanitize_key( (string) $block_instance_id )
+	);
+}
+
+function ab_test_block_get_sticky_cookie_ttl_days() {
+	return max( 1, (int) apply_filters( 'ab_test_block_sticky_cookie_ttl_days', 30 ) );
+}
+
+function ab_test_block_get_sticky_cookie_assignment( $cookie_name, $variant_count ) {
+	if ( empty( $cookie_name ) || ! isset( $_COOKIE[ $cookie_name ] ) ) {
+		return null;
+	}
+
+	return ab_test_block_sanitize_variant_key(
+		sanitize_text_field( wp_unslash( $_COOKIE[ $cookie_name ] ) ),
+		$variant_count
+	);
+}
+
+function ab_test_block_pick_weighted_variant( $weights, $variant_count ) {
+	$weights = ab_test_block_sanitize_weights( $weights, $variant_count );
+	$total   = 0;
+
+	foreach ( ab_test_block_variant_keys( $variant_count ) as $variant_key ) {
+		$total += max( 0, (int) ( $weights[ $variant_key ] ?? 0 ) );
+	}
+
+	if ( $total <= 0 ) {
+		$weights = ab_test_block_get_default_weights( $variant_count );
+		foreach ( ab_test_block_variant_keys( $variant_count ) as $variant_key ) {
+			$total += max( 0, (int) ( $weights[ $variant_key ] ?? 0 ) );
+		}
+	}
+
+	$roll   = random_int( 1, max( 1, $total ) );
+	$cursor = 0;
+
+	foreach ( ab_test_block_variant_keys( $variant_count ) as $variant_key ) {
+		$cursor += max( 0, (int) ( $weights[ $variant_key ] ?? 0 ) );
+		if ( $roll <= $cursor ) {
+			return $variant_key;
+		}
+	}
+
+	$variant_keys = ab_test_block_variant_keys( $variant_count );
+
+	return $variant_keys[ count( $variant_keys ) - 1 ];
+}
+
+function ab_test_block_resolve_preview_variant( $attributes, $experiment_id, $variant_count ) {
+	$variant_keys = ab_test_block_variant_keys( $variant_count );
+	$global       = isset( $_GET['abtest'] ) ? sanitize_text_field( wp_unslash( $_GET['abtest'] ) ) : '';
+
+	if ( '' !== $global ) {
+		$parts = explode( ':', $global, 2 );
+		if ( 2 === count( $parts ) ) {
+			$scoped_experiment_id = sanitize_key( (string) $parts[0] );
+			$preview_variant      = ab_test_block_sanitize_variant_key( $parts[1], $variant_count );
+
+			if ( $scoped_experiment_id === $experiment_id && $preview_variant && in_array( $preview_variant, $variant_keys, true ) ) {
+				return $preview_variant;
+			}
+		}
+	}
+
+	$preview_query_key = isset( $attributes['previewQueryKey'] ) ? (string) $attributes['previewQueryKey'] : '';
+	if ( '' === $preview_query_key || ! isset( $_GET[ $preview_query_key ] ) ) {
+		return null;
+	}
+
+	$preview_variant = ab_test_block_sanitize_variant_key(
+		sanitize_text_field( wp_unslash( $_GET[ $preview_query_key ] ) ),
+		$variant_count
+	);
+
+	return ( $preview_variant && in_array( $preview_variant, $variant_keys, true ) ) ? $preview_variant : null;
+}
+
+function ab_test_block_resolve_front_assignment( $attributes, $post_id, $winner_data ) {
+	$variant_count    = (int) $attributes['variantCount'];
+	$experiment_id    = (string) $attributes['experimentId'];
+	$sticky_scope     = (string) $attributes['stickyScope'];
+	$sticky_cookie    = ab_test_block_get_sticky_cookie_name(
+		$post_id,
+		(string) $attributes['blockInstanceId'],
+		$experiment_id,
+		$sticky_scope
+	);
+	$preview_variant  = ab_test_block_resolve_preview_variant( $attributes, $experiment_id, $variant_count );
+	$winner_status    = is_array( $winner_data ) ? (string) ( $winner_data['status'] ?? 'no-winner' ) : 'no-winner';
+	$winner_variant   = is_array( $winner_data ) ? ab_test_block_sanitize_variant_key( $winner_data['winner'] ?? null, $variant_count ) : null;
+	$manual_winner    = ab_test_block_sanitize_variant_key( $attributes['manualWinner'] ?? null, $variant_count );
+	$sticky_variant   = ! empty( $attributes['stickyAssignment'] )
+		? ab_test_block_get_sticky_cookie_assignment( $sticky_cookie, $variant_count )
+		: null;
+
+	if ( $preview_variant ) {
+		return array(
+			'preview' => true,
+			'source'  => 'query-preview',
+			'variant' => $preview_variant,
+		);
+	}
+
+	if ( 'winner-locked' === $winner_status && $winner_variant ) {
+		return array(
+			'preview' => false,
+			'source'  => 'locked-winner',
+			'variant' => $winner_variant,
+		);
+	}
+
+	if ( 'manual' === (string) $attributes['winnerMode'] && $manual_winner ) {
+		return array(
+			'preview' => false,
+			'source'  => 'manual-winner',
+			'variant' => $manual_winner,
+		);
+	}
+
+	if ( 'candidate' === $winner_status && $winner_variant ) {
+		return array(
+			'preview' => false,
+			'source'  => 'automatic-winner',
+			'variant' => $winner_variant,
+		);
+	}
+
+	if ( $sticky_variant ) {
+		return array(
+			'preview' => false,
+			'source'  => 'sticky',
+			'variant' => $sticky_variant,
+		);
+	}
+
+	return array(
+		'preview' => false,
+		'source'  => 'weighted-random',
+		'variant' => ab_test_block_pick_weighted_variant( $attributes['weights'] ?? null, $variant_count ),
+	);
+}
+
+function ab_test_block_format_runtime_label( $experiment_id, $variant_key, $source ) {
+	return sprintf(
+		'%1$s: Variant %2$s (%3$s)',
+		(string) $experiment_id,
+		strtoupper( (string) $variant_key ),
+		(string) $source
+	);
+}
+
 function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 	$attributes        = is_array( $attributes ) ? $attributes : array();
 	$variant_count     = 3 === (int) ( $attributes['variantCount'] ?? 2 ) ? 3 : 2;
@@ -125,6 +302,7 @@ function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 	$experiment_label  = '' !== $experiment_label ? substr( $experiment_label, 0, 120 ) : ab_test_block_generate_experiment_label();
 	$preview_query_key = isset( $attributes['previewQueryKey'] ) ? sanitize_key( (string) $attributes['previewQueryKey'] ) : '';
 	$preview_query_key = '' !== $preview_query_key ? $preview_query_key : 'ab_' . $experiment_id;
+	$front_render_mode = ab_test_block_get_front_render_mode( $attributes['frontRenderMode'] ?? 'dom-prune' );
 	$sticky_scope      = isset( $attributes['stickyScope'] ) ? (string) $attributes['stickyScope'] : 'instance';
 	$sticky_scope      = in_array( $sticky_scope, array( 'instance', 'experiment' ), true ) ? $sticky_scope : 'instance';
 	$winner_mode       = isset( $attributes['winnerMode'] ) ? (string) $attributes['winnerMode'] : 'off';
@@ -143,11 +321,13 @@ function ab_test_block_sanitize_experiment_attributes( $attributes ) {
 		'evaluationWindowDays'         => max( 1, min( 365, (int) ( $attributes['evaluationWindowDays'] ?? 14 ) ) ),
 		'experimentId'                 => $experiment_id,
 		'experimentLabel'              => $experiment_label,
+		'frontRenderMode'              => $front_render_mode,
 		'lockWinnerAfterSelection'     => ! empty( $attributes['lockWinnerAfterSelection'] ),
 		'manualWinner'                 => 'manual' === $winner_mode ? ( $manual_winner ?: $fallback_winner ) : null,
 		'minimumClicksPerVariant'      => max( 0, (int) ( $attributes['minimumClicksPerVariant'] ?? 1 ) ),
 		'minimumImpressionsPerVariant' => max( 0, (int) ( $attributes['minimumImpressionsPerVariant'] ?? 100 ) ),
 		'previewQueryKey'              => $preview_query_key,
+		'showRuntimeLabel'             => ! empty( $attributes['showRuntimeLabel'] ),
 		'stickyAssignment'             => array_key_exists( 'stickyAssignment', $attributes ) ? ! empty( $attributes['stickyAssignment'] ) : true,
 		'stickyScope'                  => $sticky_scope,
 		'trackClicks'                  => array_key_exists( 'trackClicks', $attributes ) ? ! empty( $attributes['trackClicks'] ) : true,

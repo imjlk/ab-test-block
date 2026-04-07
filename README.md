@@ -7,11 +7,13 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   One top-level `A/B Test` block plus an internal `Variant` child block
 -   A/B or A/B/C authoring with fixed variant slots
 -   Weighted delivery, sticky assignment, query-string preview overrides
+-   Front-end render modes for either pruning inactive variants or hiding them after hydration
 -   Sticky assignment scoped either to this page/block or to a shared experiment ID
 -   Manual winner and CTR-based automatic winner
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 -   Server stats surfaced back into the editor Debug panel
+-   Optional runtime label that can be toggled in both the toolbar and inspector
 
 ## Tracking Semantics
 
@@ -26,11 +28,20 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 
 -   A single block instance is identified by `postId + blockInstanceId`.
 -   `experimentId` is the logical experiment key and may be reused across multiple posts or pages.
--   The default sticky identity is browser `localStorage`, not cookies or logged-in user identity.
+-   The default sticky identity is a first-party cookie, not logged-in user identity.
 -   Default sticky scope is the current page/block instance.
--   Optional shared-experiment sticky uses the key `abtest-exp:{experimentId}`.
+-   Optional shared-experiment sticky uses the cookie key `abtest_exp_{experimentId}`.
+-   Page-block sticky uses the cookie key `abtest_{postId}_{blockInstanceId}`.
+-   Existing `localStorage` keys are treated as a one-release migration fallback and promoted into cookies on the front end.
 -   Server-side stats are aggregate only. Individual browser sticky assignments are not readable from the server.
 -   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
+
+## Front-end Rendering
+
+-   Default front render mode is `dom-prune`, which renders only the resolved active variant into the front-end HTML.
+-   Optional `css-hide` mode keeps every variant in the front-end DOM and hides inactive variants after hydration.
+-   Query preview, locked winner, manual winner, automatic winner candidate, sticky assignment, and weighted random all share the same precedence in PHP and the browser runtime.
+-   The runtime label is hidden by default and can be toggled from the block toolbar or the `Front-end Rendering` inspector panel.
 
 ## REST and Debug Surface
 
@@ -82,7 +93,7 @@ bun run visual:e2e:check
 
 ## Smoke Modes
 
--   `bun run smoke:e2e:core` checks front-end render, one active variant, `abtest_impression` / `abtest_stats`, and sticky assignment for both `instance` and `experiment` scopes.
+-   `bun run smoke:e2e:core` checks front-end render, `dom-prune` versus `css-hide`, `abtest_impression` / `abtest_stats`, sticky assignment for both `instance` and `experiment` scopes, and legacy `localStorage` migration into cookies.
 -   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Debug panel visibility.
 -   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
 -   GitHub Actions only hard-asserts `smoke:e2e:core`.

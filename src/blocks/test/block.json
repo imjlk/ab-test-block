@@ -51,6 +51,18 @@
 			"type": "string",
 			"default": "abtest"
 		},
+		"frontRenderMode": {
+			"type": "string",
+			"default": "dom-prune",
+			"enum": [
+				"dom-prune",
+				"css-hide"
+			]
+		},
+		"showRuntimeLabel": {
+			"type": "boolean",
+			"default": false
+		},
 		"stickyAssignment": {
 			"type": "boolean",
 			"default": true

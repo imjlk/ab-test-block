@@ -6,6 +6,7 @@ export type WinnerMode = 'off' | 'manual' | 'automatic';
 export type AutomaticMetric = 'ctr';
 export type EventType = 'impression' | 'click';
 export type StickyScope = 'instance' | 'experiment';
+export type FrontRenderMode = 'dom-prune' | 'css-hide';
 export type AssignmentSource =
 	| 'query-preview'
 	| 'locked-winner'
@@ -43,6 +44,8 @@ export interface AbTestExperimentAttributes {
 		tags.MinLength< 1 > &
 		tags.MaxLength< 50 > &
 		tags.Default< 'abtest' >;
+	frontRenderMode: FrontRenderMode & tags.Default< 'dom-prune' >;
+	showRuntimeLabel: boolean & tags.Default< false >;
 	stickyAssignment: boolean & tags.Default< true >;
 	stickyScope: StickyScope & tags.Default< 'instance' >;
 	winnerMode: WinnerMode & tags.Default< 'off' >;
@@ -123,6 +126,8 @@ export interface AbTestRuntimeConfiguration {
 	weights: AbTestTrafficWeights;
 	stickyAssignment: boolean;
 	stickyScope: StickyScope;
+	frontRenderMode: FrontRenderMode;
+	showRuntimeLabel: boolean;
 	previewQueryKey: string & tags.MinLength< 1 > & tags.MaxLength< 50 >;
 	winnerMode: WinnerMode;
 	manualWinner?: VariantKey;
@@ -149,6 +154,11 @@ export interface AbTestViewContext extends AbTestRuntimeConfiguration {
 	publicWriteToken?: string;
 	publicWriteExpiresAt?: number;
 	restNonce?: string;
+	isPreview?: boolean;
+	resolvedSource?: AssignmentSource;
+	resolvedVariant?: VariantKey;
+	stickyCookieName?: string;
+	stickyCookieTtlDays?: number;
 	stickyStorageKey: string;
 	variantKeys: VariantKey[];
 	winnerEvaluation: AbTestWinnerEvaluationSnapshot;
