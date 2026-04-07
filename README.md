@@ -12,8 +12,8 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Manual winner and CTR-based automatic winner
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
--   Server stats surfaced back into the editor Debug panel
--   Optional runtime label that can be toggled in both the toolbar and inspector
+-   Server stats surfaced back into the editor Diagnostics panel
+-   Optional assignment label that can be toggled in both the toolbar and inspector
 
 ## Tracking Semantics
 
@@ -36,18 +36,18 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Server-side stats are aggregate only. Individual browser sticky assignments are not readable from the server.
 -   Future CLI/reporting work should support both per-instance inspection and cross-post aggregation by `experimentId`.
 
-## Front-end Rendering
+## Front-end Output
 
--   Default front render mode is `dom-prune`, which renders only the resolved active variant into the front-end HTML.
--   Optional `css-hide` mode keeps every variant in the front-end DOM and hides inactive variants after hydration.
+-   Default front-end output is `Only render chosen variant`, which uses the internal `dom-prune` mode to render only the resolved active variant into the front-end HTML.
+-   Optional `Keep all variants in HTML` mode uses the internal `css-hide` behavior and hides inactive variants after hydration.
 -   Query preview, locked winner, manual winner, automatic winner candidate, sticky assignment, and weighted random all share the same precedence in PHP and the browser runtime.
--   The runtime label is hidden by default and can be toggled from the block toolbar or the `Front-end Rendering` inspector panel.
+-   The assignment label is hidden by default and can be toggled from the block toolbar or the `Labels & Hints` inspector panel.
 
-## REST and Debug Surface
+## REST and Diagnostics Surface
 
 -   `GET /wp-json/abtest-block/v1/stats` returns both `instance` and `experiment` snapshots.
 -   `POST /wp-json/abtest-block/v1/event` and `POST /wp-json/abtest-block/v1/reevaluate` both return the latest stats snapshot.
--   The editor Debug panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, and last update time.
+-   The editor Diagnostics panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, and last update time.
 
 ## Operations
 
@@ -94,10 +94,10 @@ bun run visual:e2e:check
 ## Smoke Modes
 
 -   `bun run smoke:e2e:core` checks front-end render, `dom-prune` versus `css-hide`, `abtest_impression` / `abtest_stats`, sticky assignment for both `instance` and `experiment` scopes, and legacy `localStorage` migration into cookies.
--   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Debug panel visibility.
+-   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Diagnostics panel visibility.
 -   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
 -   GitHub Actions only hard-asserts `smoke:e2e:core`.
--   The editor smoke keeps the `Identity & Preview` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
+-   The editor smoke keeps the `Experiment Identity` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
 -   CI also runs a clean zip-install smoke that installs `ab-test-block.zip` into a fresh WordPress environment before checking routes and front-end render.
 
 ## Visual QA

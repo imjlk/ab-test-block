@@ -450,8 +450,8 @@ async function openSidebarPanel( page: Page, title: string ) {
 	return sidebar;
 }
 
-async function openDebugPanel( page: Page ) {
-	return openSidebarPanel( page, 'Debug' );
+async function openDiagnosticsPanel( page: Page ) {
+	return openSidebarPanel( page, 'Diagnostics' );
 }
 
 async function isParentBlockSelected( page: Page, blockInstanceId: string ) {
@@ -731,9 +731,14 @@ async function runCoreSmoke( statsPostId: number ) {
 		waitUntil: 'domcontentloaded',
 	} );
 	await waitForFrontStatsEvent( frontPage );
+	const frontMarkup = await frontPage.content();
 	assert(
 		( await frontPage.locator( '[data-abtest-variant]' ).count() ) === 1,
 		'Expected dom-prune mode to keep only one variant in the front-end DOM'
+	);
+	assert(
+		( frontMarkup.match( /data-abtest-variant=/g ) ?? [] ).length === 1,
+		'Expected dom-prune mode to emit exactly one variant marker in the front-end HTML'
 	);
 
 	const visibleVariantTexts = await getVisibleVariantTexts( frontPage );
@@ -868,9 +873,14 @@ async function runCoreSmoke( statsPostId: number ) {
 		waitUntil: 'domcontentloaded',
 	} );
 	await cssHidePage.waitForTimeout( 2500 );
+	const cssHideMarkup = await cssHidePage.content();
 	assert(
 		( await cssHidePage.locator( '[data-abtest-variant]' ).count() ) === 2,
 		'Expected css-hide mode to keep both variants in the front-end DOM'
+	);
+	assert(
+		( cssHideMarkup.match( /data-abtest-variant=/g ) ?? [] ).length === 2,
+		'Expected css-hide mode to keep both variant markers in the front-end HTML'
 	);
 	assert(
 		( await getVisibleVariantTexts( cssHidePage ) ).length === 1,
@@ -893,7 +903,7 @@ async function runCoreSmoke( statsPostId: number ) {
 			.textContent() ) ?? '';
 	assert(
 		cssHideRuntimeLabel.includes( 'e2e_css_hide_fixture:' ),
-		'Expected showRuntimeLabel=true to expose the runtime label on the front end'
+		'Expected showRuntimeLabel=true to expose the assignment label on the front end'
 	);
 
 	const migrationContext = await launchContext();
@@ -909,29 +919,11 @@ async function runCoreSmoke( statsPostId: number ) {
 	await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
 		waitUntil: 'domcontentloaded',
 	} );
-	await migrationPage.waitForTimeout( 6000 );
-	let migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
-	let migrationCookieValue = await migrationPage.evaluate(
-		( key ) =>
-			document.cookie
-				.split( ';' )
-				.map( ( entry ) => entry.trim() )
-				.find( ( entry ) => entry.startsWith( `${ key }=` ) )
-				?.split( '=' )[ 1 ] ?? null,
-		getInstanceCookieName( migrationPostId, 'e2emigration1' )
-	);
+	let migrationVisibleTexts: string[] = [];
+	let migrationCookieValue: string | null = null;
 
-	if (
-		migrationCookieValue !== 'b' ||
-		migrationVisibleTexts.length !== 1 ||
-		! migrationVisibleTexts[ 0 ]?.includes(
-			'Legacy Migration Variant B body'
-		)
-	) {
-		await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
-			waitUntil: 'domcontentloaded',
-		} );
-		await migrationPage.waitForTimeout( 3000 );
+	for ( let attempt = 1; attempt <= 3; attempt += 1 ) {
+		await migrationPage.waitForTimeout( attempt === 1 ? 6000 : 3000 );
 		migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
 		migrationCookieValue = await migrationPage.evaluate(
 			( key ) =>
@@ -942,6 +934,20 @@ async function runCoreSmoke( statsPostId: number ) {
 					?.split( '=' )[ 1 ] ?? null,
 			getInstanceCookieName( migrationPostId, 'e2emigration1' )
 		);
+
+		if (
+			migrationCookieValue === 'b' &&
+			migrationVisibleTexts.length === 1 &&
+			migrationVisibleTexts[ 0 ]?.includes(
+				'Legacy Migration Variant B body'
+			)
+		) {
+			break;
+		}
+
+		await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+			waitUntil: 'domcontentloaded',
+		} );
 	}
 	assert(
 		migrationCookieValue === 'b',
@@ -953,6 +959,14 @@ async function runCoreSmoke( statsPostId: number ) {
 				'Legacy Migration Variant B body'
 			),
 		'Expected legacy localStorage migration to preserve the prior sticky variant in dom-prune mode'
+	);
+	assert(
+		(
+			( await migrationPage.content() ).match(
+				/data-abtest-variant=/g
+			) ?? []
+		).length === 1,
+		'Expected dom-prune legacy migration flow to keep exactly one variant marker in the front-end HTML'
 	);
 }
 
@@ -1041,7 +1055,25 @@ async function runEditorSmoke( statsPostId: number ) {
 	await selectParentBlock( adminPage, 'e2einstats1' );
 	await adminPage.waitForTimeout( 500 );
 
-	const sidebar = await openDebugPanel( adminPage );
+	await adminPage.getByRole( 'button', { name: 'More' } ).click();
+	const quickSummary = adminPage.locator(
+		'.wp-block-abtest-block-test__toolbar-dropdown-content'
+	);
+	await quickSummary.getByText( 'Quick summary' ).waitFor( {
+		state: 'visible',
+	} );
+	assert(
+		( await quickSummary.getByText( 'Sticky behavior' ).count() ) === 1 &&
+			( await quickSummary.getByText( 'Front-end output' ).count() ) ===
+				1,
+		'Expected Quick summary to show the reduced summary fields'
+	);
+	await quickSummary
+		.getByRole( 'button', { name: 'Open diagnostics' } )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+
+	const sidebar = await openDiagnosticsPanel( adminPage );
 	await sidebar.getByRole( 'button', { name: 'Refresh stats' } ).click();
 	await adminPage.waitForTimeout( 1200 );
 
@@ -1059,22 +1091,22 @@ async function runEditorSmoke( statsPostId: number ) {
 	assert(
 		normalizedDebugText.includes( 'This block' ) &&
 			normalizedDebugText.includes( 'This experiment' ),
-		'Expected Debug panel to show both block and experiment stats cards'
+		'Expected Diagnostics to show both block and experiment stats cards'
 	);
 	assert(
 		normalizedDebugText.includes( '1 impressions' ),
-		'Expected Debug panel to reflect the counted front-end impression'
+		'Expected Diagnostics to reflect the counted front-end impression'
 	);
 	assert(
 		( normalizedDebugText.includes( 'Current state' ) ||
 			normalizedDebugText.includes( 'Preview mode' ) ) &&
 			hasAssignmentSourceSummary,
-		'Expected Debug panel to show the current assignment source text'
+		'Expected Diagnostics to show the current assignment source text'
 	);
 
 	const advancedSidebar = await openSidebarPanel(
 		adminPage,
-		'Identity & Preview'
+		'Experiment Identity'
 	);
 	const advancedSidebarText = await advancedSidebar.innerText();
 	const experimentIdInput = advancedSidebar.getByLabel( 'Experiment ID' );
@@ -1161,15 +1193,15 @@ async function runEditorSmoke( statsPostId: number ) {
 		);
 	} else {
 		writeWarning(
-			'Skipping Experiment ID editor smoke check because the Identity & Preview panel control text was not discoverable in this editor session.'
+			'Skipping Experiment ID editor smoke check because the Experiment Identity panel control text was not discoverable in this editor session.'
 		);
 	}
 
 	const renderingSidebar = await openSidebarPanel(
 		adminPage,
-		'Front-end Rendering'
+		'Labels & Hints'
 	);
-	await renderingSidebar.getByLabel( 'Show runtime label' ).click();
+	await renderingSidebar.getByLabel( 'Show assignment label' ).click();
 	await adminPage.waitForTimeout( 300 );
 	await frame
 		.locator( '.wp-block-abtest-block-test__runtime-label' )
@@ -1185,15 +1217,15 @@ async function runEditorSmoke( statsPostId: number ) {
 				.first()
 				.textContent() ) ?? ''
 		).includes( 'e2e_stats_fixture:' ),
-		'Expected the editor canvas to mirror the front-end runtime label when enabled'
+		'Expected the editor canvas to mirror the front-end assignment label when enabled'
 	);
 	const runtimeToolbarButton = adminPage.getByRole( 'button', {
-		name: 'Toggle runtime label',
+		name: 'Show assignment label',
 	} );
 	assert(
 		( await runtimeToolbarButton.getAttribute( 'aria-pressed' ) ) ===
 			'true',
-		'Expected the runtime label toolbar toggle to stay in sync with the inspector control'
+		'Expected the assignment label toolbar toggle to stay in sync with the inspector control'
 	);
 	await runtimeToolbarButton.click();
 	await adminPage.waitForTimeout( 300 );
@@ -1201,7 +1233,7 @@ async function runEditorSmoke( statsPostId: number ) {
 		( await frame
 			.locator( '.wp-block-abtest-block-test__runtime-label' )
 			.count() ) === 0,
-		'Expected the toolbar runtime label toggle to hide the mirrored editor label'
+		'Expected the toolbar assignment label toggle to hide the mirrored editor label'
 	);
 }
 

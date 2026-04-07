@@ -24,13 +24,13 @@ Features included in this version:
 * Query-string preview overrides
 * Sticky visitor assignment using first-party cookies
 * Optional shared-experiment sticky scope by Experiment ID
-* Front-end render modes for DOM pruning or CSS hide compatibility
+* Front-end output modes for rendering only the chosen variant or keeping all variants in HTML
 * Manual winner selection
 * CTR-based automatic winner reevaluation
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
-* Editor Debug stats for both the current block and shared experiment
-* Optional runtime label that can be shown in both the editor and front end
+* Editor Diagnostics stats for both the current block and shared experiment
+* Optional assignment label that can be shown in both the editor and front end
 * Read-only WP-CLI commands for experiment and winner-state inspection
 
 Not included:
@@ -78,7 +78,7 @@ This version uses first-party cookies. By default the sticky key is scoped to th
 
 = How does the front end render inactive variants? =
 
-By default the block uses `dom-prune`, which means only the active variant is rendered into the front-end HTML. If you need compatibility with integrations that expect every variant to exist in the DOM, switch the block to `CSS hide` mode from the inspector.
+By default the block uses the `Only render chosen variant` front-end output, which maps to the internal `dom-prune` mode and renders only the active variant into the front-end HTML. If you need compatibility with integrations that expect every variant to exist in the DOM, switch to `Keep all variants in HTML`, which maps to the internal `css-hide` mode.
 
 = Can the server inspect individual sticky visitors? =
 
@@ -98,7 +98,7 @@ Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configurati
 = 0.3.1 =
 
 * Refined the editor so the A/B Test parent block stays lightweight and the active Variant remains the focus.
-* Added stats readback in the editor Debug panel plus read-only WP-CLI inspection commands.
+* Added stats readback in the editor Diagnostics panel plus read-only WP-CLI inspection commands.
 * Added optional shared-experiment sticky scope, release zip smoke checks, and a site-wide tracking kill switch.
 
 = 0.3.0 =

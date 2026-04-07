@@ -20,7 +20,7 @@ import {
 	ToggleControl,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { fetchStats } from '../../api';
@@ -141,10 +141,13 @@ export default function Edit( {
 	const [ copyExperimentIdStatus, setCopyExperimentIdStatus ] = useState<
 		'idle' | 'copied' | 'error'
 	>( 'idle' );
+	const [ isDiagnosticsPanelOpen, setIsDiagnosticsPanelOpen ] =
+		useState( false );
 	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
 	const [ isStatsLoading, setIsStatsLoading ] = useState( false );
 	const [ statsError, setStatsError ] = useState< string | undefined >();
 	const [ statsRefreshToken, setStatsRefreshToken ] = useState( 0 );
+	const diagnosticsPanelRef = useRef< HTMLDivElement | null >( null );
 	const normalizedAttributes = useMemo(
 		() => sanitizeParentAttributes( attributes ),
 		[ attributes ]
@@ -287,7 +290,6 @@ export default function Edit( {
 		previewMode,
 		winnerPreviewState
 	);
-	const stickyLabel = getStickyLabel( normalizedAttributes );
 	const updateAttribute = useMemo(
 		() =>
 			createExperimentAttributeUpdater(
@@ -411,6 +413,20 @@ export default function Edit( {
 
 		return () => window.clearTimeout( timeoutId );
 	}, [ copyExperimentIdStatus ] );
+
+	useEffect( () => {
+		if ( ! isDiagnosticsPanelOpen ) {
+			return undefined;
+		}
+
+		const timeoutId = window.setTimeout( () => {
+			diagnosticsPanelRef.current?.scrollIntoView( {
+				block: 'nearest',
+			} );
+		}, 80 );
+
+		return () => window.clearTimeout( timeoutId );
+	}, [ isDiagnosticsPanelOpen ] );
 
 	useEffect( () => {
 		const desiredBlocks = variantKeys.map( ( key ) => {
@@ -659,16 +675,18 @@ export default function Edit( {
 		previewMode === 'winner'
 			? __( 'Winner preview', 'ab-test-block' )
 			: __( 'Traffic mode', 'ab-test-block' );
-	const runtimeLabelText =
-		normalizedAttributes.showRuntimeLabel &&
-		runtimeLabelSource &&
-		activePreviewVariantKey
-			? formatRuntimeLabel(
-					normalizedAttributes.experimentId,
-					activePreviewVariantKey,
-					runtimeLabelSource
-			  )
-			: undefined;
+	const assignmentLabelText = normalizedAttributes.showRuntimeLabel
+		? formatRuntimeLabel(
+				normalizedAttributes.experimentId,
+				activePreviewVariantKey,
+				runtimeLabelSource,
+				__( 'Winner preview (no resolved winner yet)', 'ab-test-block' )
+		  )
+		: '';
+	const stickyBehaviorText = getStickyBehaviorText( normalizedAttributes );
+	const frontEndOutputText = getFrontEndOutputText(
+		normalizedAttributes.frontRenderMode
+	);
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
@@ -679,6 +697,11 @@ export default function Edit( {
 			normalizedAttributes.experimentId
 		);
 		setCopyExperimentIdStatus( didCopy ? 'copied' : 'error' );
+	}
+
+	function openDiagnosticsPanel( onClose?: () => void ) {
+		setIsDiagnosticsPanelOpen( true );
+		onClose?.();
 	}
 
 	return (
@@ -727,7 +750,7 @@ export default function Edit( {
 				<ToolbarGroup>
 					<ToolbarButton
 						isPressed={ normalizedAttributes.showRuntimeLabel }
-						label={ __( 'Toggle runtime label', 'ab-test-block' ) }
+						label={ __( 'Show assignment label', 'ab-test-block' ) }
 						showTooltip
 						onClick={ () =>
 							updateAttribute(
@@ -736,7 +759,7 @@ export default function Edit( {
 							)
 						}
 					>
-						{ __( 'Debug label', 'ab-test-block' ) }
+						{ __( 'Label', 'ab-test-block' ) }
 					</ToolbarButton>
 				</ToolbarGroup>
 				<ToolbarGroup>
@@ -805,7 +828,7 @@ export default function Edit( {
 								<div className="wp-block-abtest-block-test__toolbar-info">
 									<p className="wp-block-abtest-block-test__toolbar-info-title">
 										{ __(
-											'Experiment info',
+											'Quick summary',
 											'ab-test-block'
 										) }
 									</p>
@@ -839,67 +862,33 @@ export default function Edit( {
 										<div>
 											<dt>
 												{ __(
-													'Weights',
+													'Sticky behavior',
 													'ab-test-block'
 												) }
 											</dt>
-											<dd>
-												{ formatWeightSummary(
-													normalizedAttributes.weights,
-													normalizedAttributes.variantCount
-												) }
-											</dd>
+											<dd>{ stickyBehaviorText }</dd>
 										</div>
 										<div>
 											<dt>
 												{ __(
-													'Winner mode',
+													'Front-end output',
 													'ab-test-block'
 												) }
 											</dt>
-											<dd>
-												{
-													normalizedAttributes.winnerMode
-												}
-											</dd>
-										</div>
-										<div>
-											<dt>
-												{ __(
-													'Sticky',
-													'ab-test-block'
-												) }
-											</dt>
-											<dd>{ stickyLabel }</dd>
-										</div>
-										<div>
-											<dt>
-												{ __(
-													'Preview mode',
-													'ab-test-block'
-												) }
-											</dt>
-											<dd>{ previewModeText }</dd>
-										</div>
-										<div>
-											<dt>
-												{ __(
-													'Assignment',
-													'ab-test-block'
-												) }
-											</dt>
-											<dd>{ assignmentSourceText }</dd>
-										</div>
-										<div>
-											<dt>
-												{ __(
-													'Updated',
-													'ab-test-block'
-												) }
-											</dt>
-											<dd>{ latestStatsUpdatedText }</dd>
+											<dd>{ frontEndOutputText }</dd>
 										</div>
 									</dl>
+									<Button
+										variant="secondary"
+										onClick={ () =>
+											openDiagnosticsPanel( onClose )
+										}
+									>
+										{ __(
+											'Open diagnostics',
+											'ab-test-block'
+										) }
+									</Button>
 								</div>
 							</div>
 						) }
@@ -908,7 +897,7 @@ export default function Edit( {
 			</BlockControls>
 			<InspectorControls>
 				<PanelBody
-					title={ __( 'Editor Preview', 'ab-test-block' ) }
+					title={ __( 'Preview', 'ab-test-block' ) }
 					initialOpen
 				>
 					<SelectControl
@@ -982,7 +971,7 @@ export default function Edit( {
 					/>
 				</PanelBody>
 				<PanelBody
-					title={ __( 'Identity & Preview', 'ab-test-block' ) }
+					title={ __( 'Experiment Identity', 'ab-test-block' ) }
 					initialOpen={ false }
 				>
 					<div className="wp-block-abtest-block-test__field-actions">
@@ -1103,19 +1092,25 @@ export default function Edit( {
 					) }
 				</PanelBody>
 				<PanelBody
-					title={ __( 'Front-end Rendering', 'ab-test-block' ) }
+					title={ __( 'Front-end Output', 'ab-test-block' ) }
 					initialOpen={ false }
 				>
 					<SelectControl
-						label={ __( 'Front render mode', 'ab-test-block' ) }
+						label={ __( 'Front-end output', 'ab-test-block' ) }
 						value={ normalizedAttributes.frontRenderMode }
 						options={ [
 							{
-								label: __( 'DOM prune', 'ab-test-block' ),
+								label: __(
+									'Only render chosen variant',
+									'ab-test-block'
+								),
 								value: 'dom-prune',
 							},
 							{
-								label: __( 'CSS hide', 'ab-test-block' ),
+								label: __(
+									'Keep all variants in HTML',
+									'ab-test-block'
+								),
 								value: 'css-hide',
 							},
 						] }
@@ -1128,25 +1123,54 @@ export default function Edit( {
 						help={
 							normalizedAttributes.frontRenderMode === 'css-hide'
 								? __(
-										'Render every variant into the front-end DOM and hide inactive variants after hydration.',
+										'Compatibility mode. Keep every variant in the front-end HTML and hide inactive variants after hydration.',
 										'ab-test-block'
 								  )
 								: __(
-										'Render only the active variant into the front-end HTML. This is the default mode.',
+										'Recommended. Only the chosen variant is rendered into the front-end HTML.',
 										'ab-test-block'
 								  )
 						}
 					/>
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Labels & Hints', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
 					<ToggleControl
-						label={ __( 'Show runtime label', 'ab-test-block' ) }
+						label={ __( 'Show assignment label', 'ab-test-block' ) }
 						checked={ normalizedAttributes.showRuntimeLabel }
 						onChange={ ( value ) =>
 							updateAttribute( 'showRuntimeLabel', value )
 						}
 						help={ __(
-							'Show the same runtime/debug label in both the editor preview and the front end.',
+							'Show the same assignment label in both the editor preview and the front end.',
 							'ab-test-block'
 						) }
+					/>
+					<ToggleControl
+						label={ __(
+							'Show assignment note in diagnostics',
+							'ab-test-block'
+						) }
+						checked={ showAssignmentLabel }
+						onChange={ setShowAssignmentLabel }
+					/>
+					<ToggleControl
+						label={ __(
+							'Show winner note in diagnostics',
+							'ab-test-block'
+						) }
+						checked={ showWinnerState }
+						onChange={ setShowWinnerState }
+					/>
+					<ToggleControl
+						label={ __(
+							'Show query preview hints',
+							'ab-test-block'
+						) }
+						checked={ enableQueryPreviewHints }
+						onChange={ setEnableQueryPreviewHints }
 					/>
 				</PanelBody>
 				<PanelBody
@@ -1399,7 +1423,12 @@ export default function Edit( {
 						}
 					/>
 				</PanelBody>
-				<PanelBody title={ __( 'Debug', 'ab-test-block' ) }>
+				<PanelBody
+					ref={ diagnosticsPanelRef }
+					title={ __( 'Diagnostics', 'ab-test-block' ) }
+					opened={ isDiagnosticsPanelOpen }
+					onToggle={ setIsDiagnosticsPanelOpen }
+				>
 					<Notice status="info" isDismissible={ false }>
 						{ __(
 							'Saved server stats appear here for this block and the shared experiment. Preview mode never writes new stats.',
@@ -1500,7 +1529,7 @@ export default function Edit( {
 					) }
 					<div className="wp-block-abtest-block-test__debug-section">
 						<h4 className="wp-block-abtest-block-test__debug-section-title">
-							{ __( 'Editor annotations', 'ab-test-block' ) }
+							{ __( 'Notes', 'ab-test-block' ) }
 						</h4>
 						{ showAssignmentLabel && (
 							<p className="wp-block-abtest-block-test__sidebar-note">
@@ -1517,30 +1546,6 @@ export default function Edit( {
 								{ queryPreviewHint }
 							</p>
 						) }
-						<ToggleControl
-							label={ __(
-								'Show current assignment label in editor preview',
-								'ab-test-block'
-							) }
-							checked={ showAssignmentLabel }
-							onChange={ setShowAssignmentLabel }
-						/>
-						<ToggleControl
-							label={ __(
-								'Show current winner state in editor',
-								'ab-test-block'
-							) }
-							checked={ showWinnerState }
-							onChange={ setShowWinnerState }
-						/>
-						<ToggleControl
-							label={ __(
-								'Enable query preview hints',
-								'ab-test-block'
-							) }
-							checked={ enableQueryPreviewHints }
-							onChange={ setEnableQueryPreviewHints }
-						/>
 					</div>
 				</PanelBody>
 			</InspectorControls>
@@ -1549,9 +1554,9 @@ export default function Edit( {
 					className: 'wp-block-abtest-block-test',
 				} ) }
 			>
-				{ runtimeLabelText && (
+				{ assignmentLabelText && (
 					<p className="wp-block-abtest-block-test__runtime-label">
-						{ runtimeLabelText }
+						{ assignmentLabelText }
 					</p>
 				) }
 				<div className="wp-block-abtest-block-test__inline-notices">
@@ -1831,16 +1836,26 @@ function getAssignmentSourceText(
 	return __( 'Sticky (this block)', 'ab-test-block' );
 }
 
-function getStickyLabel( attributes: AbTestExperimentAttributes ) {
+function getStickyBehaviorText( attributes: AbTestExperimentAttributes ) {
 	if ( ! attributes.stickyAssignment ) {
-		return String( __( 'Non-sticky', 'ab-test-block' ) );
+		return String( __( 'Recalculate on each page load', 'ab-test-block' ) );
 	}
 
 	if ( attributes.stickyScope === 'experiment' ) {
-		return String( __( 'Sticky experiment', 'ab-test-block' ) );
+		return String(
+			__( 'Remember across this experiment', 'ab-test-block' )
+		);
 	}
 
-	return String( __( 'Sticky page block', 'ab-test-block' ) );
+	return String( __( 'Remember for this block', 'ab-test-block' ) );
+}
+
+function getFrontEndOutputText( frontRenderMode: FrontRenderMode ) {
+	if ( frontRenderMode === 'css-hide' ) {
+		return __( 'Keep all variants in HTML', 'ab-test-block' );
+	}
+
+	return __( 'Only render chosen variant', 'ab-test-block' );
 }
 
 function getRuntimeLabelSource(

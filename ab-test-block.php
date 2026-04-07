@@ -280,6 +280,82 @@ function ab_test_block_resolve_front_assignment( $attributes, $post_id, $winner_
 	);
 }
 
+function ab_test_block_find_variant_inner_block( $inner_blocks, $variant_count, $preferred_variant = null ) {
+	if ( ! is_array( $inner_blocks ) ) {
+		return null;
+	}
+
+	foreach ( $inner_blocks as $inner_block ) {
+		if ( ! is_array( $inner_block ) ) {
+			continue;
+		}
+
+		if ( 'abtest-block/variant' !== ( $inner_block['blockName'] ?? null ) ) {
+			continue;
+		}
+
+		$variant_key = ab_test_block_sanitize_variant_key(
+			$inner_block['attrs']['variantKey'] ?? null,
+			$variant_count
+		);
+
+		if ( ! $variant_key ) {
+			continue;
+		}
+
+		if ( null !== $preferred_variant && $variant_key !== $preferred_variant ) {
+			continue;
+		}
+
+		return array(
+			'block'   => $inner_block,
+			'variant' => $variant_key,
+		);
+	}
+
+	return null;
+}
+
+function ab_test_block_render_pruned_variant( $inner_blocks, $preferred_variant, $variant_count ) {
+	$matched_variant = ab_test_block_find_variant_inner_block(
+		$inner_blocks,
+		$variant_count,
+		$preferred_variant
+	);
+
+	if ( is_array( $matched_variant ) ) {
+		return array(
+			'error'   => '',
+			'html'    => render_block( $matched_variant['block'] ),
+			'variant' => (string) $matched_variant['variant'],
+		);
+	}
+
+	$fallback_variant = ab_test_block_find_variant_inner_block(
+		$inner_blocks,
+		$variant_count,
+		null
+	);
+
+	if ( is_array( $fallback_variant ) ) {
+		return array(
+			'error'   => sprintf(
+				'Requested Variant %1$s could not be rendered. Showing Variant %2$s instead.',
+				strtoupper( (string) $preferred_variant ),
+				strtoupper( (string) $fallback_variant['variant'] )
+			),
+			'html'    => render_block( $fallback_variant['block'] ),
+			'variant' => (string) $fallback_variant['variant'],
+		);
+	}
+
+	return array(
+		'error'   => 'No renderable variants were found for this experiment block.',
+		'html'    => '',
+		'variant' => null,
+	);
+}
+
 function ab_test_block_format_runtime_label( $experiment_id, $variant_key, $source ) {
 	return sprintf(
 		'%1$s: Variant %2$s (%3$s)',

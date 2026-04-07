@@ -150,6 +150,7 @@ export interface AbTestRuntimeConfiguration {
 }
 
 export interface AbTestViewContext extends AbTestRuntimeConfiguration {
+	initialError?: string;
 	postId: number;
 	publicWriteToken?: string;
 	publicWriteExpiresAt?: number;

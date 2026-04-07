@@ -39,6 +39,33 @@ $resolved_assignment = function_exists( 'ab_test_block_resolve_front_assignment'
 		'variant' => 'a',
 	);
 $front_render_mode = isset( $attributes['frontRenderMode'] ) ? (string) $attributes['frontRenderMode'] : 'dom-prune';
+$rendered_variants = $content;
+$render_error      = '';
+$has_rendered_variant = true;
+
+if ( 'dom-prune' === $front_render_mode && is_object( $block ) ) {
+	$parsed_inner_blocks = isset( $block->parsed_block['innerBlocks'] ) && is_array( $block->parsed_block['innerBlocks'] )
+		? $block->parsed_block['innerBlocks']
+		: array();
+	$pruned_result = function_exists( 'ab_test_block_render_pruned_variant' )
+		? ab_test_block_render_pruned_variant(
+			$parsed_inner_blocks,
+			(string) $resolved_assignment['variant'],
+			(int) $attributes['variantCount']
+		)
+		: null;
+
+	if ( is_array( $pruned_result ) ) {
+		$rendered_variants = isset( $pruned_result['html'] ) ? (string) $pruned_result['html'] : '';
+		$render_error      = isset( $pruned_result['error'] ) ? (string) $pruned_result['error'] : '';
+		$has_rendered_variant = ! empty( $pruned_result['variant'] ) && '' !== $rendered_variants;
+
+		if ( ! empty( $pruned_result['variant'] ) ) {
+			$resolved_assignment['variant'] = (string) $pruned_result['variant'];
+		}
+	}
+}
+
 $sticky_cookie_name = function_exists( 'ab_test_block_get_sticky_cookie_name' )
 	? ab_test_block_get_sticky_cookie_name(
 		$post_id,
@@ -88,8 +115,8 @@ $context     = array(
 		: 30,
 	'stickyScope'                  => (string) $attributes['stickyScope'],
 	'stickyStorageKey'             => $sticky_storage_key,
-	'trackClicks'                  => $tracking_enabled && ! empty( $attributes['trackClicks'] ),
-	'trackImpressions'             => $tracking_enabled && ! empty( $attributes['trackImpressions'] ),
+	'trackClicks'                  => $tracking_enabled && $has_rendered_variant && ! empty( $attributes['trackClicks'] ),
+	'trackImpressions'             => $tracking_enabled && $has_rendered_variant && ! empty( $attributes['trackImpressions'] ),
 	'variantCount'                 => (int) $attributes['variantCount'],
 	'variantKeys'                  => function_exists( 'ab_test_block_variant_keys' )
 		? ab_test_block_variant_keys( (int) $attributes['variantCount'] )
@@ -105,11 +132,15 @@ $context     = array(
 	'winnerMode'                   => (string) $attributes['winnerMode'],
 );
 
+if ( '' !== $render_error ) {
+	$context['initialError'] = $render_error;
+}
+
 if ( ! empty( $attributes['manualWinner'] ) ) {
 	$context['manualWinner'] = (string) $attributes['manualWinner'];
 }
 
-if ( $tracking_enabled && $post_id > 0 && function_exists( 'ab_test_block_create_public_write_token' ) ) {
+if ( $tracking_enabled && $has_rendered_variant && $post_id > 0 && function_exists( 'ab_test_block_create_public_write_token' ) ) {
 	$public_write = ab_test_block_create_public_write_token(
 		$post_id,
 		(string) $attributes['blockInstanceId'],
@@ -122,25 +153,6 @@ if ( $tracking_enabled && $post_id > 0 && function_exists( 'ab_test_block_create
 		if ( ! empty( $public_write['expiresAt'] ) ) {
 			$context['publicWriteExpiresAt'] = (int) $public_write['expiresAt'];
 		}
-	}
-}
-
-$rendered_variants = $content;
-
-if ( 'dom-prune' === $front_render_mode && is_object( $block ) && ! empty( $resolved_assignment['variant'] ) ) {
-	$parsed_inner_blocks = isset( $block->parsed_block['innerBlocks'] ) && is_array( $block->parsed_block['innerBlocks'] )
-		? $block->parsed_block['innerBlocks']
-		: array();
-
-	foreach ( $parsed_inner_blocks as $inner_block ) {
-		$variant_key = isset( $inner_block['attrs']['variantKey'] ) ? (string) $inner_block['attrs']['variantKey'] : '';
-
-		if ( $variant_key !== (string) $resolved_assignment['variant'] ) {
-			continue;
-		}
-
-		$rendered_variants = render_block( $inner_block );
-		break;
 	}
 }
 

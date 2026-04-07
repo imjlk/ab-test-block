@@ -58,6 +58,11 @@ const { state } = store( 'abtest-block', {
 				context.winnerEvaluation,
 				context.variantCount
 			);
+			state.error =
+				typeof context.initialError === 'string' &&
+				context.initialError.length > 0
+					? context.initialError
+					: undefined;
 			state.winner = context.winnerEvaluation.winner;
 			state.winnerStatus = context.winnerEvaluation.status;
 		},
