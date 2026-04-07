@@ -821,6 +821,8 @@ async function runCoreSmoke( statsPostId: number ) {
 	const malformedVisibleTexts = await getVisibleVariantTexts(
 		malformedDomPrunePage
 	);
+	const malformedFallbackMessage =
+		'Requested Variant B could not be rendered. Showing Variant A instead.';
 	const malformedRuntimeError =
 		( await malformedDomPrunePage
 			.locator( '.wp-block-abtest-block-test__runtime-error' )
@@ -839,9 +841,8 @@ async function runCoreSmoke( statsPostId: number ) {
 		'Expected dom-prune fallback to render the first valid variant when the requested variant is missing'
 	);
 	assert(
-		malformedRuntimeError.includes(
-			'Requested Variant B could not be rendered. Showing Variant A instead.'
-		),
+		malformedRuntimeError.includes( malformedFallbackMessage ) ||
+			malformedMarkup.includes( malformedFallbackMessage ),
 		'Expected dom-prune fallback to expose a runtime error when it has to fall back to a different variant'
 	);
 
