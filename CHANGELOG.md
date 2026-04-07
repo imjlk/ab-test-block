@@ -1,5 +1,20 @@
 # ab-test-block
 
+## 0.3.4 — 2026-04-07
+
+### Patch changes
+
+- [74df8a6](https://github.com/imjlk/ab-test-block/commit/74df8a6ed2ce7bf46fd2e0a6181ca3f074024449) Changed: made the Assignment label copy more readable so editor and front-end previews explain why a variant is showing instead of exposing raw internal source names.
+  
+  Added: the editor Diagnostics panel now explains when malformed saved content would make `Only render chosen variant` fall back to the first available variant until the post is saved again.
+  
+  Fixed: stabilized the legacy sticky migration smoke for CI and promoted a stable front-end visual parity baseline into the CI workflow. — Thanks @imjlk!
+- [2fe0551](https://github.com/imjlk/ab-test-block/commit/2fe0551a3d332a9007d06c563583dd2516b7b4d6) Changed: unified the editor and toolbar wording around Assignment label, Quick summary, Diagnostics, and Front-end output so the block settings are easier to understand.
+  
+  Fixed: hardened `dom-prune` rendering so the front end never falls back to rendering every variant when the requested variant cannot be found.
+  
+  Added: malformed `dom-prune` smoke coverage to verify that only one variant is emitted into front-end HTML and that fallback rendering stays safe. — Thanks @imjlk!
+
 ## 0.3.3 — 2026-04-07
 
 ### Patch changes
