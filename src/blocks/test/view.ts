@@ -75,6 +75,11 @@ const { state } = store( 'abtest-block', {
 
 			const context = getContext< AbTestViewContext >();
 			const assignment = resolveAssignment( context );
+
+			if ( assignment.reloading ) {
+				return;
+			}
+
 			state.assignment = assignment.variant;
 			state.assignmentSource = assignment.source;
 			state.isPreview = assignment.preview;
@@ -138,6 +143,7 @@ const { state } = store( 'abtest-block', {
 
 function resolveAssignment( context: AbTestViewContext ): {
 	preview: boolean;
+	reloading?: boolean;
 	source: AssignmentSource;
 	variant: VariantKey;
 } {
@@ -149,8 +155,10 @@ function resolveAssignment( context: AbTestViewContext ): {
 
 	if ( migratedAssignment.reloaded ) {
 		return (
+			migratedAssignment.assignment ??
 			serverAssignment ?? {
 				preview: false,
+				reloading: true,
 				source: 'weighted-random',
 				variant: context.variantKeys[ 0 ],
 			}
@@ -263,6 +271,7 @@ function maybePromoteLegacyStickyAssignment(
 	assignment?:
 		| {
 				preview: boolean;
+				reloading?: boolean;
 				source: AssignmentSource;
 				variant: VariantKey;
 		  }
@@ -309,7 +318,15 @@ function maybePromoteLegacyStickyAssignment(
 		shouldReloadAfterLegacyMigration( context )
 	) {
 		window.location.reload();
-		return { reloaded: true };
+		return {
+			assignment: {
+				preview: false,
+				reloading: true,
+				source: 'sticky',
+				variant: legacyVariant,
+			},
+			reloaded: true,
+		};
 	}
 
 	return {
