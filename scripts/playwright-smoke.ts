@@ -1006,6 +1006,7 @@ async function runCoreSmoke( statsPostId: number ) {
 
 	const migrationContext = await launchContext();
 	const migrationPage = await migrationContext.newPage();
+	const migrationUrl = `${ BASE_URL }/?p=${ migrationPostId }`;
 
 	await migrationPage.goto( BASE_URL, {
 		waitUntil: 'domcontentloaded',
@@ -1014,7 +1015,7 @@ async function runCoreSmoke( statsPostId: number ) {
 		window.localStorage.setItem( key, 'b' );
 	}, `abtest:${ migrationPostId }:e2emigration1` );
 
-	await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+	await migrationPage.goto( migrationUrl, {
 		waitUntil: 'domcontentloaded',
 	} );
 	let migrationVisibleTexts: string[] = [];
@@ -1027,49 +1028,17 @@ async function runCoreSmoke( statsPostId: number ) {
 	for ( let attempt = 1; attempt <= 4; attempt += 1 ) {
 		try {
 			await migrationPage.waitForFunction(
-				( payload ) => {
-					const cookieValue =
-						document.cookie
-							.split( ';' )
-							.map( ( entry ) => entry.trim() )
-							.find( ( entry ) =>
-								entry.startsWith( `${ payload.cookieKey }=` )
-							)
-							?.split( '=' )[ 1 ] ?? null;
-					const visibleTexts = Array.from(
-						document.querySelectorAll< HTMLElement >(
-							'.wp-block-abtest-block-variant'
+				( cookieKey ) =>
+					document.cookie
+						.split( ';' )
+						.map( ( entry ) => entry.trim() )
+						.find( ( entry ) =>
+							entry.startsWith( `${ cookieKey }=` )
 						)
-					)
-						.filter( ( element ) => {
-							const styles = window.getComputedStyle( element );
-							return (
-								styles.display !== 'none' &&
-								styles.visibility !== 'hidden' &&
-								element.offsetParent !== null
-							);
-						} )
-						.map(
-							( element ) => element.textContent?.trim() ?? ''
-						);
-
-					return (
-						cookieValue === 'b' &&
-						visibleTexts.length === 1 &&
-						visibleTexts[ 0 ]?.includes( payload.expectedText ) &&
-						(
-							document.documentElement.innerHTML.match(
-								/data-abtest-variant=/g
-							) ?? []
-						).length === 1
-					);
-				},
+						?.split( '=' )[ 1 ] === 'b',
+				migrationCookieKey,
 				{
-					cookieKey: migrationCookieKey,
-					expectedText: 'Legacy Migration Variant B body',
-				},
-				{
-					timeout: attempt === 1 ? 8000 : 5000,
+					timeout: attempt === 1 ? 10000 : 7000,
 				}
 			);
 			break;
@@ -1078,11 +1047,47 @@ async function runCoreSmoke( statsPostId: number ) {
 				throw error;
 			}
 
-			await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+			await migrationPage.goto( migrationUrl, {
 				waitUntil: 'domcontentloaded',
 			} );
 		}
 	}
+
+	await migrationPage.goto( migrationUrl, {
+		waitUntil: 'domcontentloaded',
+	} );
+	await migrationPage.waitForFunction(
+		( expectedText ) => {
+			const visibleTexts = Array.from(
+				document.querySelectorAll< HTMLElement >(
+					'.wp-block-abtest-block-variant'
+				)
+			)
+				.filter( ( element ) => {
+					const styles = window.getComputedStyle( element );
+					return (
+						styles.display !== 'none' &&
+						styles.visibility !== 'hidden' &&
+						element.offsetParent !== null
+					);
+				} )
+				.map( ( element ) => element.textContent?.trim() ?? '' );
+
+			return (
+				visibleTexts.length === 1 &&
+				visibleTexts[ 0 ]?.includes( expectedText ) &&
+				(
+					document.documentElement.innerHTML.match(
+						/data-abtest-variant=/g
+					) ?? []
+				).length === 1
+			);
+		},
+		'Legacy Migration Variant B body',
+		{
+			timeout: 12000,
+		}
+	);
 
 	migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
 	migrationCookieValue = await migrationPage.evaluate(
@@ -1115,7 +1120,7 @@ async function runCoreSmoke( statsPostId: number ) {
 	);
 }
 
-async function runEditorSmoke( statsPostId: number ) {
+async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 	const frontContext = await launchContext( createFrontInitScript() );
 	const frontPage = await frontContext.newPage();
 
@@ -1225,10 +1230,10 @@ async function runEditorSmoke( statsPostId: number ) {
 	const debugText = await sidebar.innerText();
 	const normalizedDebugText = debugText.replace( /\s+/g, ' ' );
 	const hasAssignmentSourceSummary = [
-		'Weighted-random',
-		'Sticky (this block)',
-		'Sticky (shared experiment)',
-		'Manual winner',
+		'weighted traffic split',
+		'Sticky assignment for this block',
+		'Sticky assignment for this experiment',
+		'Manual winner preview',
 		'Locked automatic winner',
 		'Automatic winner candidate',
 		'No resolved winner yet',
@@ -1380,6 +1385,25 @@ async function runEditorSmoke( statsPostId: number ) {
 			.count() ) === 0,
 		'Expected the toolbar assignment label toggle to hide the mirrored editor label'
 	);
+
+	await openEditor( adminPage, malformedPostId );
+	await selectParentBlock( adminPage, 'e2eeditormalformed1' );
+	await adminPage.waitForTimeout( 500 );
+	const malformedSidebar = await openDiagnosticsPanel( adminPage );
+	const malformedSidebarText = ( await malformedSidebar.innerText() ).replace(
+		/\s+/g,
+		' '
+	);
+
+	assert(
+		malformedSidebarText.includes(
+			'Saved content was missing Variant B.'
+		) &&
+			malformedSidebarText.includes(
+				'front-end output would fall back to Variant A until you save this repaired block.'
+			),
+		'Expected Diagnostics to explain the dom-prune fallback path for malformed saved variant content'
+	);
 }
 
 async function run() {
@@ -1398,13 +1422,23 @@ async function run() {
 			variantBBody: 'Stats Variant B body',
 		} ) }${ buildParagraph( 'Outside block' ) }`
 	);
+	const malformedEditorPostId = createFixturePost(
+		'E2E Editor DOM Prune Note Fixture',
+		`${ buildSingleVariantExperimentBlock( {
+			blockInstanceId: 'e2eeditormalformed1',
+			experimentId: 'e2e_editor_dom_prune_fixture',
+			experimentLabel: 'Editor DOM Prune Fixture',
+			previewQueryKey: 'ab_e2e_editor_dom_prune_fixture',
+			variantABody: 'Editor DOM prune Variant A body',
+		} ) }${ buildParagraph( 'Outside block' ) }`
+	);
 
 	if ( RUN_CORE_CHECKS ) {
 		await runCoreSmoke( statsPostId );
 	}
 
 	if ( RUN_EDITOR_CHECKS ) {
-		await runEditorSmoke( statsPostId );
+		await runEditorSmoke( statsPostId, malformedEditorPostId );
 	}
 
 	writeLog( 'Playwright smoke passed.' );

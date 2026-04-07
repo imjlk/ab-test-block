@@ -7,6 +7,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { buildCanonicalExperimentMarkup } from './canonical-demo';
 
 type VariantKey = 'a' | 'b';
+type VisualSubset = 'all' | 'front-a';
 
 const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
 const ADMIN_USER = process.env.AB_TEST_BLOCK_ADMIN_USER ?? 'admin';
@@ -24,6 +25,9 @@ const TEMP_DIR = join(
 	'ab-test-block'
 );
 const UPDATE_BASELINES = process.argv.includes( '--update' );
+const VISUAL_SUBSET = getVisualSubset(
+	process.env.AB_TEST_BLOCK_VISUAL_SET ?? 'all'
+);
 
 const createdPostIds: number[] = [];
 const browsers: Browser[] = [];
@@ -36,6 +40,14 @@ function assert( condition: unknown, message: string ): asserts condition {
 	if ( ! condition ) {
 		throw new Error( message );
 	}
+}
+
+function getVisualSubset( value: string ): VisualSubset {
+	if ( value === 'all' || value === 'front-a' ) {
+		return value;
+	}
+
+	return 'all';
 }
 
 function runWp( args: string[] ) {
@@ -310,7 +322,12 @@ async function captureVisualBaselines() {
 	const frontContext = await launchContext();
 	const frontPage = await frontContext.newPage();
 
-	for ( const variantKey of [ 'a', 'b' ] as const ) {
+	const frontVariants =
+		VISUAL_SUBSET === 'front-a'
+			? ( [ 'a' ] as const )
+			: ( [ 'a', 'b' ] as const );
+
+	for ( const variantKey of frontVariants ) {
 		await frontPage.goto(
 			`${ BASE_URL }/?p=${ fixturePostId }&ab_visual_fixture=${ variantKey }`,
 			{ waitUntil: 'domcontentloaded' }
@@ -325,36 +342,42 @@ async function captureVisualBaselines() {
 		);
 	}
 
-	const adminContext = await launchContext();
-	const adminPage = await adminContext.newPage();
+	if ( VISUAL_SUBSET === 'all' ) {
+		const adminContext = await launchContext();
+		const adminPage = await adminContext.newPage();
 
-	await loginToWpAdmin( adminPage );
-	await openEditor( adminPage, fixturePostId );
-	let frame = await selectParentBlock( adminPage, 'visualfixture1' );
-	await adminPage
-		.locator( '[role="toolbar"] button[aria-label="Edit Variant A"]' )
-		.click();
-	await adminPage.waitForTimeout( 500 );
-	const editorRoot = frame.locator( '.wp-block-abtest-block-test' ).first();
-	await waitForRoot( editorRoot );
-	await captureLocator(
-		editorRoot,
-		join( outputDirectory, 'editor-parent-selected.png' )
-	);
+		await loginToWpAdmin( adminPage );
+		await openEditor( adminPage, fixturePostId );
+		let frame = await selectParentBlock( adminPage, 'visualfixture1' );
+		await adminPage
+			.locator( '[role="toolbar"] button[aria-label="Edit Variant A"]' )
+			.click();
+		await adminPage.waitForTimeout( 500 );
+		const editorRoot = frame
+			.locator( '.wp-block-abtest-block-test' )
+			.first();
+		await waitForRoot( editorRoot );
+		await captureLocator(
+			editorRoot,
+			join( outputDirectory, 'editor-parent-selected.png' )
+		);
 
-	await selectVariantBlock( adminPage, 'visualfixture1', 'b' );
-	frame = adminPage.frameLocator( 'iframe[name="editor-canvas"]' );
-	await captureLocator(
-		frame.locator( '.wp-block-abtest-block-test' ).first(),
-		join( outputDirectory, 'editor-child-selected.png' )
-	);
+		await selectVariantBlock( adminPage, 'visualfixture1', 'b' );
+		frame = adminPage.frameLocator( 'iframe[name="editor-canvas"]' );
+		await captureLocator(
+			frame.locator( '.wp-block-abtest-block-test' ).first(),
+			join( outputDirectory, 'editor-child-selected.png' )
+		);
+	}
 
-	for ( const fileName of [
-		'front-a.png',
-		'front-b.png',
-		'editor-parent-selected.png',
-		'editor-child-selected.png',
-	] ) {
+	for ( const fileName of VISUAL_SUBSET === 'front-a'
+		? [ 'front-a.png' ]
+		: [
+				'front-a.png',
+				'front-b.png',
+				'editor-parent-selected.png',
+				'editor-child-selected.png',
+		  ] ) {
 		compareOrWriteBaseline( fileName, outputDirectory );
 	}
 }

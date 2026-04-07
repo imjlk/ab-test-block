@@ -32,7 +32,10 @@ import {
 	sanitizeWinnerSnapshot,
 	sumWeights,
 } from '../../lib/experiment';
-import { formatRuntimeLabel } from '../../lib/runtime-label';
+import {
+	formatRuntimeLabel,
+	getAssignmentSourceLabel,
+} from '../../lib/runtime-label';
 import type {
 	AbTestExperimentAttributes,
 	AssignmentSource,
@@ -76,6 +79,11 @@ type WinnerPreviewState = {
 		| 'off';
 	status: WinnerLifecycleState | 'manual' | 'off';
 	variant?: VariantKey;
+};
+
+type VariantStructureIssue = {
+	fallbackVariant?: VariantKey;
+	missingVariantKeys: VariantKey[];
 };
 
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
@@ -141,6 +149,9 @@ export default function Edit( {
 	const [ copyExperimentIdStatus, setCopyExperimentIdStatus ] = useState<
 		'idle' | 'copied' | 'error'
 	>( 'idle' );
+	const [ structureRepairNote, setStructureRepairNote ] = useState<
+		string | undefined
+	>();
 	const [ isDiagnosticsPanelOpen, setIsDiagnosticsPanelOpen ] =
 		useState( false );
 	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
@@ -415,6 +426,10 @@ export default function Edit( {
 	}, [ copyExperimentIdStatus ] );
 
 	useEffect( () => {
+		setStructureRepairNote( undefined );
+	}, [ clientId, normalizedAttributes.blockInstanceId ] );
+
+	useEffect( () => {
 		if ( ! isDiagnosticsPanelOpen ) {
 			return undefined;
 		}
@@ -443,6 +458,20 @@ export default function Edit( {
 				( block, index ) =>
 					innerBlocks[ index ]?.clientId !== block.clientId
 			);
+		const variantStructureIssue = getVariantStructureIssue(
+			innerBlocks,
+			variantKeys
+		);
+
+		if (
+			needsSync &&
+			normalizedAttributes.frontRenderMode === 'dom-prune' &&
+			variantStructureIssue
+		) {
+			setStructureRepairNote(
+				getVariantStructureRepairNote( variantStructureIssue )
+			);
+		}
 
 		if ( needsSync ) {
 			replaceInnerBlocks( clientId, desiredBlocks, false );
@@ -475,6 +504,7 @@ export default function Edit( {
 		clientId,
 		innerBlockByVariant,
 		innerBlocks,
+		normalizedAttributes.frontRenderMode,
 		replaceInnerBlocks,
 		updateBlockAttributes,
 		variantKeys,
@@ -1514,6 +1544,11 @@ export default function Edit( {
 									) }
 								</Notice>
 							) }
+						{ structureRepairNote && (
+							<Notice status="warning" isDismissible={ false }>
+								{ structureRepairNote }
+							</Notice>
+						) }
 					</div>
 					{ stats && (
 						<div className="wp-block-abtest-block-test__stats-grid">
@@ -1544,6 +1579,11 @@ export default function Edit( {
 						{ enableQueryPreviewHints && (
 							<p className="wp-block-abtest-block-test__sidebar-note">
 								{ queryPreviewHint }
+							</p>
+						) }
+						{ structureRepairNote && (
+							<p className="wp-block-abtest-block-test__sidebar-note">
+								{ structureRepairNote }
 							</p>
 						) }
 					</div>
@@ -1725,7 +1765,7 @@ function getAssignmentPreviewText(
 ) {
 	if ( previewMode === 'winner' && winnerPreviewState.variant ) {
 		let previewSource: string = __(
-			'automatic candidate',
+			'automatic winner candidate',
 			'ab-test-block'
 		);
 
@@ -1737,7 +1777,7 @@ function getAssignmentPreviewText(
 
 		return sprintf(
 			/* translators: 1: variant key, 2: preview source */
-			__( 'Variant %1$s via %2$s.', 'ab-test-block' ),
+			__( 'Previewing Variant %1$s from %2$s.', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase(),
 			previewSource
 		);
@@ -1752,7 +1792,7 @@ function getAssignmentPreviewText(
 
 	return sprintf(
 		/* translators: %s: variant key */
-		__( 'Editing Variant %s in traffic mode.', 'ab-test-block' ),
+		__( 'Previewing Variant %s in traffic mode.', 'ab-test-block' ),
 		activeVariantKey.toUpperCase()
 	);
 }
@@ -1811,7 +1851,7 @@ function getAssignmentSourceText(
 ) {
 	if ( previewMode === 'winner' ) {
 		if ( winnerPreviewState.source === 'manual-winner' ) {
-			return __( 'Manual winner', 'ab-test-block' );
+			return __( 'Manual winner preview', 'ab-test-block' );
 		}
 
 		if ( winnerPreviewState.source === 'automatic-winner-locked' ) {
@@ -1826,14 +1866,14 @@ function getAssignmentSourceText(
 	}
 
 	if ( ! attributes.stickyAssignment ) {
-		return __( 'Weighted-random', 'ab-test-block' );
+		return getAssignmentSourceLabel( 'weighted-random' );
 	}
 
 	if ( attributes.stickyScope === 'experiment' ) {
-		return __( 'Sticky (shared experiment)', 'ab-test-block' );
+		return __( 'Sticky assignment for this experiment', 'ab-test-block' );
 	}
 
-	return __( 'Sticky (this block)', 'ab-test-block' );
+	return __( 'Sticky assignment for this block', 'ab-test-block' );
 }
 
 function getStickyBehaviorText( attributes: AbTestExperimentAttributes ) {
@@ -1856,6 +1896,62 @@ function getFrontEndOutputText( frontRenderMode: FrontRenderMode ) {
 	}
 
 	return __( 'Only render chosen variant', 'ab-test-block' );
+}
+
+function getVariantStructureIssue(
+	innerBlocks: BlockRecord[],
+	variantKeys: VariantKey[]
+): VariantStructureIssue | undefined {
+	const validVariantKeys = innerBlocks
+		.map( ( block ) => block.attributes.variantKey )
+		.filter( isVariantKeyValue );
+	const missingVariantKeys = variantKeys.filter(
+		( key ) => ! validVariantKeys.includes( key )
+	);
+	const orderMismatch =
+		validVariantKeys.length !== variantKeys.length ||
+		validVariantKeys.some( ( key, index ) => variantKeys[ index ] !== key );
+
+	if ( missingVariantKeys.length === 0 && ! orderMismatch ) {
+		return undefined;
+	}
+
+	return {
+		fallbackVariant: validVariantKeys[ 0 ],
+		missingVariantKeys,
+	};
+}
+
+function getVariantStructureRepairNote( issue: VariantStructureIssue ) {
+	if ( issue.fallbackVariant && issue.missingVariantKeys.length > 0 ) {
+		return sprintf(
+			/* translators: 1: fallback variant key, 2: comma-separated missing variant keys */
+			__(
+				'Saved content was missing Variant %2$s. The editor rebuilt the expected slots, and front-end output would fall back to Variant %1$s until you save this repaired block.',
+				'ab-test-block'
+			),
+			issue.fallbackVariant.toUpperCase(),
+			issue.missingVariantKeys
+				.map( ( key ) => key.toUpperCase() )
+				.join( ', ' )
+		);
+	}
+
+	if ( issue.fallbackVariant ) {
+		return sprintf(
+			/* translators: %s: fallback variant key */
+			__(
+				'Saved content was out of sync with the expected variant structure. The editor rebuilt the slots, and front-end output would currently fall back to Variant %s until you save the repaired block.',
+				'ab-test-block'
+			),
+			issue.fallbackVariant.toUpperCase()
+		);
+	}
+
+	return __(
+		'Saved content did not contain a renderable variant block. The editor rebuilt the expected slots; save the post to restore front-end output.',
+		'ab-test-block'
+	);
 }
 
 function getRuntimeLabelSource(

@@ -35,6 +35,7 @@
 		"smoke:e2e": "AB_TEST_BLOCK_SMOKE_MODE=full bun run smoke:e2e:runner",
 		"visual:e2e:runner": "tsx scripts/playwright-visual.ts",
 		"visual:e2e:check": "bun run visual:e2e:runner",
+		"visual:e2e:ci": "AB_TEST_BLOCK_VISUAL_SET=front-a bun run visual:e2e:runner",
 		"visual:e2e:update": "bun run visual:e2e:runner -- --update",
 		"env:start": "wp-env start",
 		"env:status": "wp-env status",
