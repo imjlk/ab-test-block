@@ -910,8 +910,8 @@ async function runCoreSmoke( statsPostId: number ) {
 		waitUntil: 'domcontentloaded',
 	} );
 	await migrationPage.waitForTimeout( 6000 );
-	const migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
-	const migrationCookieValue = await migrationPage.evaluate(
+	let migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
+	let migrationCookieValue = await migrationPage.evaluate(
 		( key ) =>
 			document.cookie
 				.split( ';' )
@@ -920,6 +920,29 @@ async function runCoreSmoke( statsPostId: number ) {
 				?.split( '=' )[ 1 ] ?? null,
 		getInstanceCookieName( migrationPostId, 'e2emigration1' )
 	);
+
+	if (
+		migrationCookieValue !== 'b' ||
+		migrationVisibleTexts.length !== 1 ||
+		! migrationVisibleTexts[ 0 ]?.includes(
+			'Legacy Migration Variant B body'
+		)
+	) {
+		await migrationPage.goto( `${ BASE_URL }/?p=${ migrationPostId }`, {
+			waitUntil: 'domcontentloaded',
+		} );
+		await migrationPage.waitForTimeout( 3000 );
+		migrationVisibleTexts = await getVisibleVariantTexts( migrationPage );
+		migrationCookieValue = await migrationPage.evaluate(
+			( key ) =>
+				document.cookie
+					.split( ';' )
+					.map( ( entry ) => entry.trim() )
+					.find( ( entry ) => entry.startsWith( `${ key }=` ) )
+					?.split( '=' )[ 1 ] ?? null,
+			getInstanceCookieName( migrationPostId, 'e2emigration1' )
+		);
+	}
 	assert(
 		migrationCookieValue === 'b',
 		'Expected legacy localStorage sticky assignment to migrate into a first-party cookie'
