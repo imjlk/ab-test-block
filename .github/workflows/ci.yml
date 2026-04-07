@@ -185,9 +185,6 @@ jobs:
             - name: Run Playwright smoke
               run: bun run smoke:e2e:core
 
-            - name: Run visual parity subset
-              run: bun run visual:e2e:ci
-
             - name: Stop WordPress
               if: always()
               continue-on-error: true

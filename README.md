@@ -104,14 +104,14 @@ bun run visual:e2e:check
 
 -   `bun run visual:e2e:update` refreshes the repo-tracked Playwright baseline screenshots for the canonical parity fixture.
 -   `bun run visual:e2e:check` recaptures the same fixture locally and compares it against the committed baselines.
--   `bun run visual:e2e:ci` checks the most stable front-end subset (`front-a.png`) with a small pixel-diff tolerance and is the only visual parity assertion currently promoted into CI.
+-   `bun run visual:e2e:ci` checks the most stable front-end subset (`front-a.png`) with a small pixel-diff tolerance so we can keep evaluating it as a future CI candidate.
 -   `bun run wordpress-org:sync-screenshots` copies the current front/editor parity baselines into `.wordpress-org/screenshot-1.png` and `.wordpress-org/screenshot-2.png`.
 -   The current baseline set covers:
     -   front `Variant A`
     -   front `Variant B`
     -   editor with the parent block selected
     -   editor with a child variant selected
--   Most of the suite remains local-first so we can keep stabilizing screenshot noise before promoting more subsets into CI.
+-   The suite remains local-first while we keep stabilizing runner-to-runner screenshot drift before promoting any subset into CI.
 
 ## Local WordPress Validation
 
