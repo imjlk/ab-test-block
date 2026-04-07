@@ -1185,7 +1185,7 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 		'Expected toolbar variant switching to show Variant B content in the editor canvas'
 	);
 	await adminPage
-		.locator( '[role="toolbar"] button[aria-label="Winner preview"]' )
+		.locator( '[role="toolbar"] button[aria-label="Preview winner mode"]' )
 		.click();
 	await adminPage.waitForTimeout( 400 );
 	assert(
@@ -1193,7 +1193,7 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 		'Expected Winner preview toolbar action to keep parent block selection'
 	);
 	await adminPage
-		.locator( '[role="toolbar"] button[aria-label="Traffic mode"]' )
+		.locator( '[role="toolbar"] button[aria-label="Preview traffic mode"]' )
 		.click();
 	await adminPage.waitForTimeout( 400 );
 	assert(
@@ -1226,7 +1226,9 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 	await selectParentBlock( adminPage, 'e2einstats1' );
 	await adminPage.waitForTimeout( 500 );
 
-	await adminPage.getByRole( 'button', { name: 'More' } ).click();
+	await adminPage
+		.getByRole( 'button', { name: 'Open quick summary and actions' } )
+		.click();
 	const quickSummary = adminPage.locator(
 		'.wp-block-abtest-block-test__toolbar-dropdown-content'
 	);
@@ -1391,7 +1393,7 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 		'Expected the editor canvas to mirror the front-end assignment label when enabled'
 	);
 	const runtimeToolbarButton = adminPage.getByRole( 'button', {
-		name: 'Show assignment label',
+		name: /assignment label/i,
 	} );
 	assert(
 		( await runtimeToolbarButton.getAttribute( 'aria-pressed' ) ) ===

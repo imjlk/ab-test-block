@@ -8,13 +8,13 @@ Stable tag: 0.3.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Create A/B and A/B/C experiments directly inside the block editor with weighted traffic allocation, sticky assignment, and winner rules.
+Run A/B and A/B/C content experiments directly in the block editor.
 
 == Description ==
 
 A/B Test Block is a pure block plugin for the WordPress Block Directory.
 
-Build one experiment block, author up to three content variants, and let the front end choose which variant to show based on preview overrides, winner rules, sticky assignment, and weighted random delivery.
+Build one experiment block, author up to three content variants, and let WordPress choose which variant to show with preview overrides, sticky assignment, weighted delivery, and winner rules.
 
 Features included in this version:
 
@@ -47,14 +47,14 @@ Not included:
 
 == Screenshots ==
 
-1. The front end shows one active Variant at a time while impressions and CTA clicks are tracked in the background.
-2. The editor keeps the active Variant close to the front-end presentation while controls stay in the toolbar and inspector.
+1. The front end shows only the chosen Variant while impressions and CTA clicks are tracked in the background.
+2. The editor keeps the active Variant close to the front-end view while settings stay in the toolbar and inspector.
 
 == Frequently Asked Questions ==
 
 = Does this plugin add an admin report screen? =
 
-No. This plugin keeps reporting out of scope so it stays aligned with Block Directory expectations.
+No. Reporting stays out of scope so the plugin remains aligned with Block Directory expectations.
 
 = How do I preview a specific variant? =
 
@@ -62,7 +62,7 @@ Use either a block-specific preview key such as `?ab_home_hero=b` or the global 
 
 = How is automatic winner selection decided? =
 
-This version uses CTR only. When every eligible variant meets the minimum thresholds, the variant with the highest CTR wins. Ties do not produce a winner.
+This version uses CTR only. When every eligible variant reaches the minimum thresholds, the highest CTR wins. Ties do not produce a winner.
 
 = How do I mark a CTA? =
 
@@ -78,7 +78,7 @@ This version uses first-party cookies. By default the sticky key is scoped to th
 
 = How does the front end render inactive variants? =
 
-By default the block uses the `Only render chosen variant` front-end output, which maps to the internal `dom-prune` mode and renders only the active variant into the front-end HTML. If you need compatibility with integrations that expect every variant to exist in the DOM, switch to `Keep all variants in HTML`, which maps to the internal `css-hide` mode.
+By default the block uses `Only render chosen variant`, which maps to the internal `dom-prune` mode and renders only the active variant into the front-end HTML. If you need compatibility with integrations that expect every variant to exist in the DOM, switch to `Keep all variants in HTML`, which maps to the internal `css-hide` mode.
 
 = Can the server inspect individual sticky visitors? =
 
@@ -89,6 +89,16 @@ No. The server stores aggregate experiment stats only. Sticky assignment is brow
 Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
 == Changelog ==
+
+= 0.3.4 =
+
+* Refined Assignment label, Quick summary, Diagnostics, and Front-end output wording across the toolbar and inspector.
+* Hardened `Only render chosen variant` so malformed saved content still renders at most one fallback Variant and explains the fallback path in Diagnostics.
+
+= 0.3.3 =
+
+* Added cookie-first sticky assignment, shared Assignment label controls, and front-end output modes for rendering only the chosen Variant or keeping all variants in HTML.
+* Finalized canonical demo content, Playground previews, and WordPress.org screenshots so submission assets match the live block UI.
 
 = 0.3.2 =
 

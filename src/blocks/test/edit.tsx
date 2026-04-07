@@ -750,6 +750,11 @@ export default function Edit( {
 								__( 'Edit Variant %s', 'ab-test-block' ),
 								variantKey.toUpperCase()
 							) }
+							aria-label={ sprintf(
+								/* translators: %s: variant key */
+								__( 'Edit Variant %s', 'ab-test-block' ),
+								variantKey.toUpperCase()
+							) }
 							showTooltip
 							onClick={ () =>
 								activateVariantEditor( variantKey )
@@ -762,7 +767,11 @@ export default function Edit( {
 				<ToolbarGroup>
 					<ToolbarButton
 						isPressed={ previewMode === 'traffic' }
-						label={ __( 'Traffic mode', 'ab-test-block' ) }
+						label={ __( 'Preview traffic mode', 'ab-test-block' ) }
+						aria-label={ __(
+							'Preview traffic mode',
+							'ab-test-block'
+						) }
 						showTooltip
 						onClick={ previewTrafficMode }
 					>
@@ -770,7 +779,11 @@ export default function Edit( {
 					</ToolbarButton>
 					<ToolbarButton
 						isPressed={ previewMode === 'winner' }
-						label={ __( 'Winner preview', 'ab-test-block' ) }
+						label={ __( 'Preview winner mode', 'ab-test-block' ) }
+						aria-label={ __(
+							'Preview winner mode',
+							'ab-test-block'
+						) }
 						showTooltip
 						onClick={ previewWinnerMode }
 					>
@@ -780,7 +793,14 @@ export default function Edit( {
 				<ToolbarGroup>
 					<ToolbarButton
 						isPressed={ normalizedAttributes.showRuntimeLabel }
-						label={ __( 'Show assignment label', 'ab-test-block' ) }
+						label={ __(
+							'Toggle assignment label',
+							'ab-test-block'
+						) }
+						aria-label={ __(
+							'Toggle assignment label',
+							'ab-test-block'
+						) }
 						showTooltip
 						onClick={ () =>
 							updateAttribute(
@@ -789,7 +809,7 @@ export default function Edit( {
 							)
 						}
 					>
-						{ __( 'Label', 'ab-test-block' ) }
+						{ __( 'Assignment', 'ab-test-block' ) }
 					</ToolbarButton>
 				</ToolbarGroup>
 				<ToolbarGroup>
@@ -800,7 +820,14 @@ export default function Edit( {
 						renderToggle={ ( { isOpen, onToggle } ) => (
 							<ToolbarButton
 								aria-expanded={ isOpen }
-								label={ __( 'More', 'ab-test-block' ) }
+								aria-label={ __(
+									'Open quick summary and actions',
+									'ab-test-block'
+								) }
+								label={ __(
+									'Open quick summary and actions',
+									'ab-test-block'
+								) }
 								showTooltip
 								onClick={ onToggle }
 							>
@@ -866,7 +893,7 @@ export default function Edit( {
 										<div>
 											<dt>
 												{ __(
-													'Label',
+													'Experiment label',
 													'ab-test-block'
 												) }
 											</dt>
@@ -977,7 +1004,7 @@ export default function Edit( {
 							updateAttribute( 'experimentLabel', value )
 						}
 						help={ __(
-							'Readable name used in the editor and debug stats.',
+							'Readable name shown in the editor and Diagnostics.',
 							'ab-test-block'
 						) }
 					/>
@@ -1174,7 +1201,7 @@ export default function Edit( {
 							updateAttribute( 'showRuntimeLabel', value )
 						}
 						help={ __(
-							'Show the same assignment label in both the editor preview and the front end.',
+							'Show the same assignment label in the editor preview and on the front end.',
 							'ab-test-block'
 						) }
 					/>

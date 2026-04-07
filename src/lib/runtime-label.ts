@@ -28,7 +28,7 @@ export function formatRuntimeLabel(
 		return fallback ? `${ experimentId }: ${ fallback }` : '';
 	}
 
-	return `${ experimentId }: Showing Variant ${ variant.toUpperCase() } from ${ getAssignmentSourceLabel(
+	return `${ experimentId }: Variant ${ variant.toUpperCase() } via ${ getAssignmentSourceLabel(
 		source
 	) }`;
 }

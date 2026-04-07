@@ -89,6 +89,7 @@ Recommended local loop:
 bun run build
 bun run smoke:e2e:editor
 bun run visual:e2e:check
+bun run plugin-zip
 ```
 
 ## Smoke Modes

@@ -357,11 +357,31 @@ function ab_test_block_render_pruned_variant( $inner_blocks, $preferred_variant,
 }
 
 function ab_test_block_format_runtime_label( $experiment_id, $variant_key, $source ) {
+	$source_label = 'weighted traffic split';
+
+	switch ( (string) $source ) {
+		case 'query-preview':
+			$source_label = 'preview override';
+			break;
+		case 'locked-winner':
+			$source_label = 'locked winner';
+			break;
+		case 'manual-winner':
+			$source_label = 'manual winner';
+			break;
+		case 'automatic-winner':
+			$source_label = 'automatic winner';
+			break;
+		case 'sticky':
+			$source_label = 'sticky assignment';
+			break;
+	}
+
 	return sprintf(
-		'%1$s: Variant %2$s (%3$s)',
+		'%1$s: Variant %2$s via %3$s',
 		(string) $experiment_id,
 		strtoupper( (string) $variant_key ),
-		(string) $source
+		$source_label
 	);
 }
 
