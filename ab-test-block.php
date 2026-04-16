@@ -1427,6 +1427,84 @@ function ab_test_block_cli_format_timestamp( $value ) {
 	return ! empty( $value ) ? gmdate( 'Y-m-d H:i:s', (int) $value ) . ' UTC' : '';
 }
 
+function ab_test_block_get_winner_reason_summary( $attributes, $state ) {
+	$variant_count = isset( $attributes['variantCount'] ) ? (int) $attributes['variantCount'] : 2;
+	$winner_mode   = isset( $attributes['winnerMode'] ) ? (string) $attributes['winnerMode'] : 'off';
+	$manual_winner = ab_test_block_sanitize_variant_key( $attributes['manualWinner'] ?? null, $variant_count );
+	$winner        = ab_test_block_sanitize_variant_key( $state['winner'] ?? null, $variant_count );
+	$reason_code   = isset( $state['reasonCode'] ) ? (string) $state['reasonCode'] : 'insufficient-data';
+
+	if ( 'manual' === $winner_mode && $manual_winner ) {
+		return sprintf( 'Manual winner is in use: Variant %s', strtoupper( $manual_winner ) );
+	}
+
+	if ( 'locked' === $reason_code && $winner ) {
+		return sprintf( 'Winner locked to Variant %s', strtoupper( $winner ) );
+	}
+
+	if ( 'candidate' === $reason_code && $winner ) {
+		return sprintf( 'Automatic winner candidate: Variant %s', strtoupper( $winner ) );
+	}
+
+	switch ( $reason_code ) {
+		case 'off':
+			return 'Automatic winner is off';
+		case 'manual':
+			return 'Manual winner is in use';
+		case 'thresholds-not-met':
+			return 'No winner yet: minimum data not met';
+		case 'tie':
+			return 'No winner yet: tied CTR';
+		case 'insufficient-data':
+		default:
+			return 'No winner yet: not enough data';
+	}
+}
+
+function ab_test_block_get_current_winner_value( $attributes, $state ) {
+	$variant_count = isset( $attributes['variantCount'] ) ? (int) $attributes['variantCount'] : 2;
+	$winner_mode   = isset( $attributes['winnerMode'] ) ? (string) $attributes['winnerMode'] : 'off';
+
+	if ( 'manual' === $winner_mode ) {
+		return ab_test_block_sanitize_variant_key( $attributes['manualWinner'] ?? null, $variant_count );
+	}
+
+	return ab_test_block_sanitize_variant_key( $state['winner'] ?? null, $variant_count );
+}
+
+function ab_test_block_get_variant_progress_rows( $stats_scope, $attributes, $state ) {
+	$minimum_impressions = isset( $attributes['minimumImpressionsPerVariant'] ) ? (int) $attributes['minimumImpressionsPerVariant'] : 100;
+	$minimum_clicks      = isset( $attributes['minimumClicksPerVariant'] ) ? (int) $attributes['minimumClicksPerVariant'] : 1;
+	$variants            = is_array( $stats_scope['variants'] ?? null ) ? $stats_scope['variants'] : array();
+	$has_stats_values    = array_reduce(
+		$variants,
+		static function( $carry, $variant ) {
+			return $carry || ! empty( $variant['impressions'] ) || ! empty( $variant['clicks'] );
+		},
+		false
+	);
+
+	if ( ! $has_stats_values && is_array( $state['variants'] ?? null ) ) {
+		$variants = $state['variants'];
+	}
+
+	return array_map(
+		static function( $variant ) use ( $minimum_clicks, $minimum_impressions ) {
+			$impressions = (int) ( $variant['impressions'] ?? 0 );
+			$clicks      = (int) ( $variant['clicks'] ?? 0 );
+
+			return array(
+				'clicks'      => $clicks,
+				'ctr'         => (float) ( $variant['ctr'] ?? 0 ),
+				'eligible'    => $impressions >= $minimum_impressions && $clicks >= $minimum_clicks,
+				'impressions' => $impressions,
+				'variant'     => (string) ( $variant['variantKey'] ?? '' ),
+			);
+		},
+		$variants
+	);
+}
+
 function ab_test_block_cli_get_instance_context( $post_id, $block_instance_id ) {
 	$attributes = ab_test_block_get_post_experiment_attributes(
 		(int) $post_id,
@@ -1678,17 +1756,35 @@ if ( class_exists( 'WP_CLI_Command' ) ) {
 				WP_CLI::error( 'Could not resolve the requested block instance.' );
 			}
 
+			$state = ab_test_block_get_winner_state(
+				$post_id,
+				$block_instance,
+				(int) $context['variantCount'],
+				(int) $context['evaluationWindowDays']
+			);
+			$stats = ab_test_block_get_stats_snapshot(
+				$post_id,
+				$block_instance,
+				(string) $context['experimentId'],
+				(int) $context['variantCount'],
+				(int) $context['evaluationWindowDays']
+			);
+
 			ab_test_block_cli_print_json(
 				array(
 					'blockInstanceId' => (string) $block_instance,
+					'currentWinner'   => ab_test_block_get_current_winner_value( $context, $state ),
 					'experimentId'    => (string) $context['experimentId'],
+					'mode'            => (string) ( $context['winnerMode'] ?? 'off' ),
 					'postId'          => (int) $post_id,
-					'state'           => ab_test_block_get_winner_state(
-						$post_id,
-						$block_instance,
-						(int) $context['variantCount'],
-						(int) $context['evaluationWindowDays']
+					'reasonSummary'   => ab_test_block_get_winner_reason_summary( $context, $state ),
+					'state'           => $state,
+					'thresholds'      => array(
+						'evaluationWindowDays'       => (int) ( $context['evaluationWindowDays'] ?? 14 ),
+						'minimumClicksPerVariant'    => (int) ( $context['minimumClicksPerVariant'] ?? 1 ),
+						'minimumImpressionsPerVariant' => (int) ( $context['minimumImpressionsPerVariant'] ?? 100 ),
 					),
+					'variantProgress' => ab_test_block_get_variant_progress_rows( $stats['instance'], $context, $state ),
 				)
 			);
 		}

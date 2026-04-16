@@ -52,6 +52,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `POST /wp-json/abtest-block/v1/event` and `POST /wp-json/abtest-block/v1/reevaluate` both return the latest stats snapshot.
 -   Automatic reevaluation now returns a `reasonCode` such as `thresholds-not-met`, `tie`, or `insufficient-data` so Diagnostics and CLI output explain why a winner does or does not exist.
 -   The editor Diagnostics panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, last update time, and short winner explanations.
+-   `Winning Rules` can now reevaluate automatic winner state on demand, apply the current candidate as a manual winner, or return a manual winner back to automatic mode.
 
 ## Operations
 
@@ -59,6 +60,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `wp abtest-block stats --post=<id> --block-instance=<id>` shows the current block-instance snapshot.
 -   `wp abtest-block stats --experiment=<id>` shows the shared experiment aggregate snapshot.
 -   `wp abtest-block winner-state --post=<id> --block-instance=<id> --format=json` shows the stored winner snapshot for one block instance.
+-   The `winner-state` JSON also includes `reasonSummary`, `thresholds`, and `variantProgress` so the current automatic winner state is readable without opening the editor.
 -   `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` disables new tracking writes and browser-layer emits site-wide while keeping saved stats readable.
 -   Advanced installations can also short-circuit tracking through the `ab_test_block_tracking_enabled` filter.
 

@@ -23,7 +23,8 @@ import { useDispatch, useSelect } from '@wordpress/data';
 import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 
-import { fetchStats } from '../../api';
+import { fetchStats, reevaluateExperiment } from '../../api';
+import type { AbTestBlockReevaluateResponse } from '../../api-types';
 import {
 	equalizeWeights,
 	getDefaultPreviewQueryKey,
@@ -100,6 +101,14 @@ type SelectedCtaTarget = {
 	variantKey: VariantKey;
 };
 
+type WinnerThresholdProgress = {
+	variantKey: VariantKey;
+	impressions: number;
+	clicks: number;
+	ctr: number;
+	eligible: boolean;
+};
+
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
 const VARIANT_LOCK = {
 	move: true,
@@ -171,6 +180,13 @@ export default function Edit( {
 	>();
 	const [ isDiagnosticsPanelOpen, setIsDiagnosticsPanelOpen ] =
 		useState( false );
+	const [ winnerEvaluationOverride, setWinnerEvaluationOverride ] = useState<
+		AbTestWinnerEvaluationSnapshot | undefined
+	>();
+	const [ isReevaluatingWinner, setIsReevaluatingWinner ] = useState( false );
+	const [ winnerControlError, setWinnerControlError ] = useState<
+		string | undefined
+	>();
 	const [ stats, setStats ] = useState< AbTestStatsResponse | undefined >();
 	const [ isStatsLoading, setIsStatsLoading ] = useState( false );
 	const [ statsError, setStatsError ] = useState< string | undefined >();
@@ -318,6 +334,8 @@ export default function Edit( {
 		) => void;
 	};
 	const variantKeys = getVariantKeys( normalizedAttributes.variantCount );
+	const effectiveWinnerEvaluation =
+		winnerEvaluationOverride ?? storedWinnerEvaluation;
 	const innerBlockByVariant = useMemo(
 		() =>
 			new Map(
@@ -337,9 +355,9 @@ export default function Edit( {
 		() =>
 			getWinnerPreviewState(
 				normalizedAttributes,
-				storedWinnerEvaluation
+				effectiveWinnerEvaluation
 			),
-		[ normalizedAttributes, storedWinnerEvaluation ]
+		[ effectiveWinnerEvaluation, normalizedAttributes ]
 	);
 	const activeTrafficVariantKey =
 		selectedVariantKey && variantKeys.includes( selectedVariantKey )
@@ -414,6 +432,34 @@ export default function Edit( {
 		variantKeys.includes( winnerPreviewState.variant )
 			? winnerPreviewState.variant
 			: undefined;
+	const automaticWinnerReasonSummary = getWinnerStateText(
+		normalizedAttributes,
+		winnerPreviewState
+	);
+	const automaticWinnerModeText = getWinnerModeText(
+		normalizedAttributes.winnerMode
+	);
+	const automaticWinnerText = getCurrentWinnerSummary(
+		normalizedAttributes,
+		winnerPreviewState
+	);
+	const automaticWinnerEvaluatedText = formatOptionalTimestamp(
+		effectiveWinnerEvaluation.evaluatedAt
+	);
+	const automaticWinnerProgress = getWinnerThresholdProgress(
+		variantKeys,
+		stats?.instance,
+		effectiveWinnerEvaluation,
+		normalizedAttributes.minimumImpressionsPerVariant,
+		normalizedAttributes.minimumClicksPerVariant
+	);
+	const canUseCandidateAsManualWinner =
+		normalizedAttributes.winnerMode === 'automatic' &&
+		winnerPreviewState.status === 'candidate' &&
+		Boolean( winnerPreviewState.variant );
+	const canReturnToAutomaticWinner =
+		normalizedAttributes.winnerMode === 'manual' &&
+		Boolean( normalizedAttributes.manualWinner );
 	const updateAttribute = useMemo(
 		() =>
 			createExperimentAttributeUpdater(
@@ -541,6 +587,19 @@ export default function Edit( {
 	useEffect( () => {
 		setStructureRepairNote( undefined );
 	}, [ clientId, normalizedAttributes.blockInstanceId ] );
+
+	useEffect( () => {
+		setWinnerEvaluationOverride( undefined );
+		setWinnerControlError( undefined );
+		setIsReevaluatingWinner( false );
+	}, [
+		normalizedAttributes.blockInstanceId,
+		normalizedAttributes.evaluationWindowDays,
+		normalizedAttributes.experimentId,
+		normalizedAttributes.minimumClicksPerVariant,
+		normalizedAttributes.minimumImpressionsPerVariant,
+		normalizedAttributes.variantCount,
+	] );
 
 	useEffect( () => {
 		if ( selectedCtaTarget ) {
@@ -843,6 +902,85 @@ export default function Edit( {
 
 	function refreshStats() {
 		setStatsRefreshToken( ( current ) => current + 1 );
+	}
+
+	async function reevaluateWinnerNow() {
+		if ( postId <= 0 || isReevaluatingWinner ) {
+			return;
+		}
+
+		setIsReevaluatingWinner( true );
+		setWinnerControlError( undefined );
+
+		try {
+			const result = await reevaluateExperiment( {
+				blockInstanceId: normalizedAttributes.blockInstanceId,
+				evaluationWindowDays: normalizedAttributes.evaluationWindowDays,
+				experimentId: normalizedAttributes.experimentId,
+				lockWinnerAfterSelection:
+					normalizedAttributes.lockWinnerAfterSelection,
+				metric: normalizedAttributes.automaticMetric,
+				minimumClicksPerVariant:
+					normalizedAttributes.minimumClicksPerVariant,
+				minimumImpressionsPerVariant:
+					normalizedAttributes.minimumImpressionsPerVariant,
+				postId,
+				variantCount: normalizedAttributes.variantCount,
+			} );
+
+			if ( ! result.isValid || ! result.data ) {
+				setWinnerControlError(
+					result.errors[ 0 ]?.expected ??
+						__(
+							'Unable to reevaluate the automatic winner.',
+							'ab-test-block'
+						)
+				);
+				return;
+			}
+
+			setWinnerEvaluationOverride(
+				createWinnerSnapshotFromReevaluateResponse(
+					result.data,
+					normalizedAttributes.variantCount,
+					normalizedAttributes.evaluationWindowDays
+				)
+			);
+			setStats( result.data.stats );
+			setStatsError( undefined );
+		} catch ( error ) {
+			setWinnerControlError(
+				error instanceof Error
+					? error.message
+					: __( 'Unknown reevaluate error.', 'ab-test-block' )
+			);
+		} finally {
+			setIsReevaluatingWinner( false );
+		}
+	}
+
+	function useCandidateAsManualWinner() {
+		if ( ! canUseCandidateAsManualWinner || ! winnerPreviewState.variant ) {
+			return;
+		}
+
+		setWinnerControlError( undefined );
+		setAttributes( {
+			manualWinner: winnerPreviewState.variant,
+			winnerMode: 'manual',
+		} );
+	}
+
+	function returnToAutomaticWinner() {
+		if ( ! canReturnToAutomaticWinner ) {
+			return;
+		}
+
+		setWinnerControlError( undefined );
+		setAttributes( {
+			manualWinner: undefined,
+			winnerMode: 'automatic',
+		} );
 	}
 
 	async function handleCopyExperimentId() {
@@ -1825,6 +1963,45 @@ export default function Edit( {
 							updateAttribute( 'lockWinnerAfterSelection', value )
 						}
 					/>
+					<div className="wp-block-abtest-block-test__panel-actions">
+						<Button
+							variant="secondary"
+							onClick={ reevaluateWinnerNow }
+							disabled={ isReevaluatingWinner || postId <= 0 }
+						>
+							{ isReevaluatingWinner
+								? __( 'Reevaluating…', 'ab-test-block' )
+								: __( 'Reevaluate now', 'ab-test-block' ) }
+						</Button>
+						<Button
+							variant="secondary"
+							onClick={ useCandidateAsManualWinner }
+							disabled={ ! canUseCandidateAsManualWinner }
+						>
+							{ __(
+								'Use candidate as manual winner',
+								'ab-test-block'
+							) }
+						</Button>
+						<Button
+							variant="secondary"
+							onClick={ returnToAutomaticWinner }
+							disabled={ ! canReturnToAutomaticWinner }
+						>
+							{ __(
+								'Return to automatic winner',
+								'ab-test-block'
+							) }
+						</Button>
+					</div>
+					{ winnerControlError && (
+						<Notice status="warning" isDismissible={ false }>
+							{ winnerControlError }
+						</Notice>
+					) }
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ automaticWinnerReasonSummary }
+					</p>
 				</PanelBody>
 				<PanelBody title={ __( 'Tracking', 'ab-test-block' ) }>
 					<Notice status="info" isDismissible={ false }>
@@ -1931,6 +2108,82 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					</Notice>
+					<div className="wp-block-abtest-block-test__debug-section">
+						<h4 className="wp-block-abtest-block-test__debug-section-title">
+							{ __( 'Automatic winner', 'ab-test-block' ) }
+						</h4>
+						<dl className="wp-block-abtest-block-test__debug-summary">
+							<div>
+								<dt>{ __( 'Mode', 'ab-test-block' ) }</dt>
+								<dd>{ automaticWinnerModeText }</dd>
+							</div>
+							<div>
+								<dt>{ __( 'Reason', 'ab-test-block' ) }</dt>
+								<dd>{ automaticWinnerReasonSummary }</dd>
+							</div>
+							<div>
+								<dt>
+									{ __( 'Current winner', 'ab-test-block' ) }
+								</dt>
+								<dd>{ automaticWinnerText }</dd>
+							</div>
+							<div>
+								<dt>
+									{ __(
+										'Last reevaluated',
+										'ab-test-block'
+									) }
+								</dt>
+								<dd>{ automaticWinnerEvaluatedText }</dd>
+							</div>
+						</dl>
+						<div className="wp-block-abtest-block-test__winner-progress">
+							{ automaticWinnerProgress.map( ( row ) => (
+								<div
+									key={ row.variantKey }
+									className="wp-block-abtest-block-test__winner-progress-row"
+								>
+									<div className="wp-block-abtest-block-test__winner-progress-head">
+										<strong>
+											{ sprintf(
+												/* translators: %s: variant key */
+												__(
+													'Variant %s',
+													'ab-test-block'
+												),
+												row.variantKey.toUpperCase()
+											) }
+										</strong>
+										<span>
+											{ row.eligible
+												? __(
+														'Eligible',
+														'ab-test-block'
+												  )
+												: __(
+														'Waiting',
+														'ab-test-block'
+												  ) }
+										</span>
+									</div>
+									<p className="wp-block-abtest-block-test__sidebar-note">
+										{ sprintf(
+											/* translators: 1: impressions current, 2: impressions required, 3: clicks current, 4: clicks required, 5: ctr percentage */
+											__(
+												'Impressions %1$d / %2$d, clicks %3$d / %4$d, CTR %5$s',
+												'ab-test-block'
+											),
+											row.impressions,
+											normalizedAttributes.minimumImpressionsPerVariant,
+											row.clicks,
+											normalizedAttributes.minimumClicksPerVariant,
+											formatCtrPercentage( row.ctr )
+										) }
+									</p>
+								</div>
+							) ) }
+						</div>
+					</div>
 					<div className="wp-block-abtest-block-test__debug-section">
 						<div className="wp-block-abtest-block-test__debug-section-head">
 							<h4 className="wp-block-abtest-block-test__debug-section-title">
@@ -2271,7 +2524,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Manual winner: Variant %s', 'ab-test-block' ),
+			__( 'Manual winner is in use: Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -2282,7 +2535,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner locked: Variant %s', 'ab-test-block' ),
+			__( 'Winner locked to Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -2361,6 +2614,102 @@ function getWinnerReasonText( reasonCode: WinnerReasonCode ) {
 		default:
 			return __( 'No winner yet: not enough data', 'ab-test-block' );
 	}
+}
+
+function getWinnerModeText( winnerMode: WinnerMode ) {
+	switch ( winnerMode ) {
+		case 'manual':
+			return __( 'Manual', 'ab-test-block' );
+		case 'automatic':
+			return __( 'Automatic', 'ab-test-block' );
+		case 'off':
+		default:
+			return __( 'Off', 'ab-test-block' );
+	}
+}
+
+function getCurrentWinnerSummary(
+	attributes: AbTestExperimentAttributes,
+	winnerPreviewState: WinnerPreviewState
+) {
+	if ( attributes.winnerMode === 'manual' && attributes.manualWinner ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Variant %s', 'ab-test-block' ),
+			attributes.manualWinner.toUpperCase()
+		);
+	}
+
+	if ( winnerPreviewState.variant ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Variant %s', 'ab-test-block' ),
+			winnerPreviewState.variant.toUpperCase()
+		);
+	}
+
+	return __( 'None yet', 'ab-test-block' );
+}
+
+function formatOptionalTimestamp( value?: number ) {
+	return value
+		? new Date( value * 1000 ).toLocaleString()
+		: __( 'Not reevaluated yet', 'ab-test-block' );
+}
+
+function getWinnerThresholdProgress(
+	variantKeys: VariantKey[],
+	instanceStats: AbTestStatsScopeSnapshot | undefined,
+	winnerEvaluation: AbTestWinnerEvaluationSnapshot,
+	minimumImpressionsPerVariant: number,
+	minimumClicksPerVariant: number
+) {
+	const rows = instanceStats?.variants?.length
+		? instanceStats.variants
+		: winnerEvaluation.variants;
+	const progressByVariant = new Map(
+		rows.map( ( row ) => [ row.variantKey, row ] )
+	);
+
+	return variantKeys.map( ( variantKey ): WinnerThresholdProgress => {
+		const row = progressByVariant.get( variantKey );
+
+		return {
+			clicks: Number( row?.clicks ?? 0 ),
+			ctr: Number( row?.ctr ?? 0 ),
+			eligible:
+				Number( row?.impressions ?? 0 ) >=
+					minimumImpressionsPerVariant &&
+				Number( row?.clicks ?? 0 ) >= minimumClicksPerVariant,
+			impressions: Number( row?.impressions ?? 0 ),
+			variantKey,
+		};
+	} );
+}
+
+function createWinnerSnapshotFromReevaluateResponse(
+	response: AbTestBlockReevaluateResponse,
+	variantCount: VariantCount,
+	windowDays: number
+) {
+	return sanitizeWinnerSnapshot(
+		{
+			evaluatedAt: response.evaluatedAt,
+			lockedAt: response.lockedAt,
+			metric: response.metric,
+			reasonCode: response.reasonCode,
+			status: response.status,
+			variants: response.variants.map( ( variant ) => ( {
+				clicks: variant.clicks,
+				ctr: variant.ctr,
+				impressions: variant.impressions,
+				variantKey: variant.variant,
+			} ) ),
+			winner: response.winner,
+			windowDays,
+		},
+		variantCount
+	);
 }
 
 function getStickyBehaviorText( attributes: AbTestExperimentAttributes ) {

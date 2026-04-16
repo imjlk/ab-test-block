@@ -76,6 +76,24 @@ function createFixturePost( title: string, content: string ) {
 	return postId;
 }
 
+function seedWinnerState(
+	postId: number,
+	blockInstanceId: string,
+	state: Record< string, unknown >
+) {
+	const payload = Buffer.from(
+		JSON.stringify( {
+			[ blockInstanceId ]: state,
+		} ),
+		'utf8'
+	).toString( 'base64' );
+
+	runWp( [
+		'eval',
+		`update_post_meta( ${ postId }, '_ab_test_block_winner_state', json_decode( base64_decode( '${ payload }' ), true ) );`,
+	] );
+}
+
 function buildParagraph( text: string ) {
 	return `<!-- wp:paragraph --><p>${ text }</p><!-- /wp:paragraph -->`;
 }
@@ -1425,7 +1443,8 @@ async function runEditorSmoke(
 	malformedPostId: number,
 	lifecyclePostId: number,
 	authoringPostId: number,
-	reasonPostId: number
+	reasonPostId: number,
+	candidatePostId: number
 ) {
 	const frontContext = await launchContext( createFrontInitScript() );
 	const frontPage = await frontContext.newPage();
@@ -1893,14 +1912,61 @@ async function runEditorSmoke(
 
 	await openEditor( adminPage, reasonPostId );
 	await selectParentBlock( adminPage, 'e2ereason1' );
+	const rulesSidebar = await openSidebarPanel( adminPage, 'Winning Rules' );
+	await rulesSidebar
+		.getByRole( 'button', { name: 'Reevaluate now' } )
+		.click();
+	await adminPage.waitForTimeout( 800 );
 	const reasonSidebar = await openDiagnosticsPanel( adminPage );
 	const reasonSidebarText = ( await reasonSidebar.innerText() ).replace(
 		/\s+/g,
 		' '
 	);
 	assert(
-		reasonSidebarText.includes( 'No winner yet: not enough data' ),
+		reasonSidebarText.includes( 'Automatic winner' ) &&
+			reasonSidebarText.includes( 'No winner yet: not enough data' ) &&
+			reasonSidebarText.includes( 'Impressions 0 / 100, clicks 0 / 1' ),
 		'Expected Diagnostics to explain the automatic winner state with the new no-data reason text'
+	);
+
+	await openEditor( adminPage, candidatePostId );
+	await selectParentBlock( adminPage, 'e2ecandidate1' );
+	const candidateRulesSidebar = await openSidebarPanel(
+		adminPage,
+		'Winning Rules'
+	);
+	assert(
+		( await candidateRulesSidebar
+			.getByRole( 'button', { name: 'Use candidate as manual winner' } )
+			.isDisabled() ) === false,
+		'Expected Winning Rules to enable the candidate-to-manual action when a candidate exists'
+	);
+	await candidateRulesSidebar
+		.getByRole( 'button', { name: 'Use candidate as manual winner' } )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const candidateManualSidebar = await openDiagnosticsPanel( adminPage );
+	const candidateManualText = (
+		await candidateManualSidebar.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		candidateManualText.includes( 'Manual winner is in use: Variant B' ),
+		'Expected Diagnostics to reflect the manual winner summary after applying the candidate'
+	);
+	await openSidebarPanel( adminPage, 'Winning Rules' );
+	await candidateRulesSidebar
+		.getByRole( 'button', { name: 'Return to automatic winner' } )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const candidateAutomaticSidebar = await openDiagnosticsPanel( adminPage );
+	const candidateAutomaticText = (
+		await candidateAutomaticSidebar.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		candidateAutomaticText.includes(
+			'Automatic winner candidate: Variant B'
+		),
+		'Expected Diagnostics to return to the automatic candidate summary after clearing the manual override'
 	);
 
 	await openEditor( adminPage, malformedPostId );
@@ -1992,6 +2058,39 @@ async function run() {
 			winnerMode: 'automatic',
 		} )
 	);
+	const candidatePostId = createFixturePost(
+		'E2E Winner Candidate Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2ecandidate1',
+			experimentId: 'e2e_candidate_fixture',
+			experimentLabel: 'Candidate Fixture',
+			variantABody: 'Candidate Variant A body',
+			variantBBody: 'Candidate Variant B body',
+			winnerMode: 'automatic',
+		} )
+	);
+	seedWinnerState( candidatePostId, 'e2ecandidate1', {
+		evaluatedAt: Math.floor( Date.now() / 1000 ),
+		metric: 'ctr',
+		reasonCode: 'candidate',
+		status: 'candidate',
+		variants: [
+			{
+				clicks: 1,
+				ctr: 0,
+				impressions: 1,
+				variantKey: 'a',
+			},
+			{
+				clicks: 2,
+				ctr: 0.5,
+				impressions: 4,
+				variantKey: 'b',
+			},
+		],
+		winner: 'b',
+		windowDays: 14,
+	} );
 
 	if ( RUN_CORE_CHECKS ) {
 		await runCoreSmoke( statsPostId );
@@ -2003,7 +2102,8 @@ async function run() {
 			malformedEditorPostId,
 			lifecyclePostId,
 			authoringPostId,
-			reasonPostId
+			reasonPostId,
+			candidatePostId
 		);
 	}
 

@@ -26,7 +26,7 @@ Features included in this version:
 * Optional shared-experiment sticky scope by Experiment ID
 * Front-end output modes for rendering only the chosen variant or keeping all variants in HTML
 * Manual winner selection
-* CTR-based automatic winner reevaluation
+* CTR-based automatic winner reevaluation with readable Diagnostics summaries
 * Editor actions for marking a selected block as the primary CTA
 * Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
 * Variant authoring actions for copying the visible variant or swapping A/B content
@@ -65,7 +65,7 @@ Use either a block-specific preview key such as `?ab_home_hero=b` or the global 
 
 = How is automatic winner selection decided? =
 
-This version uses CTR only. When every eligible variant reaches the minimum thresholds, the highest CTR wins. Diagnostics explains when there is still no winner because the minimum data has not been reached or the top CTR is tied.
+This version uses CTR only. When every eligible variant reaches the minimum thresholds, the highest CTR wins. Diagnostics explains when there is still no winner because there is not enough data, the minimum data has not been reached, or the top CTR is tied. Use `Reevaluate now` in `Winning Rules` to refresh the automatic result, `Use candidate as manual winner` to keep the current candidate, or `Return to automatic winner` to remove the manual override.
 
 = How do I mark a CTA? =
 
