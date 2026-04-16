@@ -1,0 +1,128 @@
+name: WordPress.org Deploy
+
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: wordpress-org-deploy-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    NODE_VERSION: '24'
+    BUN_VERSION: '1.3.10'
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    PLUGIN_SLUG: 'ab-test-block'
+
+jobs:
+    deploy:
+        name: Publish to WordPress.org
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+
+            - name: Cache Bun install cache
+              uses: actions/cache@v5
+              with:
+                  path: ~/.bun/install/cache
+                  key: bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+                  restore-keys: |
+                      bun-install-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Ensure Subversion
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  if command -v svn >/dev/null 2>&1; then
+                    svn --version --quiet
+                    exit 0
+                  fi
+
+                  sudo apt-get update
+                  sudo apt-get install -y subversion
+
+            - name: Read release version
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  echo "PACKAGE_VERSION=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_ENV"
+
+            - name: Build release zip
+              run: bun run plugin-zip
+
+            - name: Run WordPress.org preflight
+              run: bun run wordpress-org:preflight
+
+            - name: Checkout WordPress.org SVN
+              env:
+                  WPORG_SVN_PASSWORD: ${{ secrets.WPORG_SVN_PASSWORD }}
+                  WPORG_SVN_USERNAME: ${{ secrets.WPORG_SVN_USERNAME }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  svn checkout \
+                    --non-interactive \
+                    --username "${WPORG_SVN_USERNAME}" \
+                    --password "${WPORG_SVN_PASSWORD}" \
+                    "https://plugins.svn.wordpress.org/${PLUGIN_SLUG}" \
+                    ".wordpress-org-svn/${PLUGIN_SLUG}"
+
+            - name: Stage WordPress.org payload
+              run: bun run wordpress-org:stage -- --target=".wordpress-org-svn/${PLUGIN_SLUG}"
+
+            - name: Reconcile SVN working copy
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  cd ".wordpress-org-svn/${PLUGIN_SLUG}"
+
+                  while IFS= read -r missing_path; do
+                    [ -n "${missing_path}" ] || continue
+                    svn rm --force "${missing_path}"
+                  done < <(svn status | awk '/^!/ {print $2}')
+
+                  svn add --force trunk tags assets > /dev/null
+                  svn status
+
+            - name: Commit and publish to WordPress.org
+              env:
+                  WPORG_SVN_PASSWORD: ${{ secrets.WPORG_SVN_PASSWORD }}
+                  WPORG_SVN_USERNAME: ${{ secrets.WPORG_SVN_USERNAME }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  cd ".wordpress-org-svn/${PLUGIN_SLUG}"
+
+                  if [ -z "$(svn status)" ]; then
+                    echo "No WordPress.org SVN changes to publish."
+                    exit 0
+                  fi
+
+                  svn commit \
+                    --non-interactive \
+                    --username "${WPORG_SVN_USERNAME}" \
+                    --password "${WPORG_SVN_PASSWORD}" \
+                    -m "Deploy version ${PACKAGE_VERSION} to WordPress.org"

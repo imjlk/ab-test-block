@@ -65,7 +65,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `bun run playground:sync` regenerates the tracked blueprint files under `.wordpress-org/blueprints/`.
 -   `bun run playground:preview-link` prints the raw `playground-build` blueprint URL and the matching Playground link for the current repository remote.
 -   `.wordpress-org/blueprints/blueprint.json` is the WordPress.org preview blueprint that is meant to land in the plugin SVN assets path as `assets/blueprints/blueprint.json`.
--   `bun run wordpress-org:copy-assets -- --target=/path/to/svn/assets` copies `.wordpress-org/*` into the exact SVN assets layout for future deployment automation.
+-   `bun run wordpress-org:copy-assets -- --target=/path/to/svn/assets` copies only the publishable WordPress.org assets into an existing SVN `assets/` directory.
 -   Pull requests from this repository get a Playground preview button in the PR description with the current branch build installed.
 
 ## Development
@@ -90,6 +90,7 @@ bun run build
 bun run smoke:e2e:editor
 bun run visual:e2e:check
 bun run plugin-zip
+bun run wordpress-org:preflight
 ```
 
 ## Smoke Modes
@@ -142,6 +143,8 @@ bun run env:destroy
 ```bash
 bun run plugin-zip
 bun run playground:sync
+bun run wordpress-org:preflight
+bun run wordpress-org:stage
 ```
 
 This generates a submission-ready zip that includes the built plugin files under the `ab-test-block` root folder.
@@ -151,11 +154,38 @@ The Playground blueprint sync keeps these repo-tracked files up to date:
 -   `.wordpress-org/blueprints/blueprint.json`
 -   `.wordpress-org/blueprints/github-blueprint.json`
 
-For future WordPress.org deployment automation, copy the tracked assets into an SVN checkout with:
+## WordPress.org Deployment
+
+Use this release sequence:
+
+1. Merge the release PR generated from `sampo`.
+2. Tag the version and publish the GitHub release.
+3. Run the manual `WordPress.org Deploy` workflow from GitHub Actions.
+
+Local dry-run commands:
+
+```bash
+bun run plugin-zip
+bun run wordpress-org:preflight
+bun run wordpress-org:stage
+```
+
+`bun run wordpress-org:stage` writes a ready-to-commit SVN layout under `.wordpress-org-dist/ab-test-block/`:
+
+-   `trunk/`
+-   `tags/<version>/`
+-   `assets/`
+
+If you only need to refresh an existing SVN `assets/` directory, copy the publishable assets with:
 
 ```bash
 bun run wordpress-org:copy-assets -- --target=/path/to/plugin-svn/assets
 ```
+
+The manual GitHub workflow expects these secrets:
+
+-   `WPORG_SVN_USERNAME`
+-   `WPORG_SVN_PASSWORD`
 
 ## Code Structure
 

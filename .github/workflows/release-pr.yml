@@ -101,7 +101,7 @@ jobs:
             - bumps the plugin package version and changelog
             - syncs the WordPress plugin header and readme stable tag
 
-            Merge this PR before tagging a release or wiring in WordPress.org SVN deployment.
+            Merge this PR, tag the release, then trigger the manual WordPress.org Deploy workflow when you are ready to publish SVN.
           labels: |
             release
           add-paths: |

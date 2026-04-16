@@ -24,6 +24,8 @@
 		"playground:sync": "tsx scripts/sync-playground-blueprints.ts",
 		"playground:preview-link": "tsx scripts/sync-playground-blueprints.ts --print-links",
 		"wordpress-org:copy-assets": "tsx scripts/copy-wordpress-org-assets.ts",
+		"wordpress-org:preflight": "tsx scripts/wordpress-org-preflight.ts",
+		"wordpress-org:stage": "tsx scripts/wordpress-org-stage.ts",
 		"wordpress-org:sync-screenshots": "tsx scripts/sync-wordpress-org-screenshots.ts",
 		"build": "bun run sync-types && bun run sync-rest && wp-scripts build --experimental-modules",
 		"start": "bun run sync-types && bun run sync-rest && wp-scripts start --experimental-modules",
