@@ -109,6 +109,16 @@ type WinnerThresholdProgress = {
 	eligible: boolean;
 };
 
+type VariantStructureSyncFeedback = {
+	kind: 'success' | 'warning';
+	message: string;
+};
+
+type VariantStructureSyncResult = {
+	blocks: BlockRecord[];
+	changed: boolean;
+};
+
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
 const VARIANT_LOCK = {
 	move: true,
@@ -177,6 +187,9 @@ export default function Edit( {
 	>();
 	const [ structureRepairNote, setStructureRepairNote ] = useState<
 		string | undefined
+	>();
+	const [ variantStructureFeedback, setVariantStructureFeedback ] = useState<
+		VariantStructureSyncFeedback | undefined
 	>();
 	const [ isDiagnosticsPanelOpen, setIsDiagnosticsPanelOpen ] =
 		useState( false );
@@ -587,6 +600,15 @@ export default function Edit( {
 	useEffect( () => {
 		setStructureRepairNote( undefined );
 	}, [ clientId, normalizedAttributes.blockInstanceId ] );
+
+	useEffect( () => {
+		setVariantStructureFeedback( undefined );
+	}, [
+		activePreviewVariantKey,
+		clientId,
+		normalizedAttributes.blockInstanceId,
+		normalizedAttributes.variantCount,
+	] );
 
 	useEffect( () => {
 		setWinnerEvaluationOverride( undefined );
@@ -1121,6 +1143,99 @@ export default function Edit( {
 			false
 		);
 		selectBlock( clientId );
+	}
+
+	function syncStructureFromActiveVariant() {
+		const sourceVariantBlock = innerBlockByVariant.get(
+			activePreviewVariantKey
+		);
+
+		if ( ! sourceVariantBlock ) {
+			setVariantStructureFeedback( {
+				kind: 'warning',
+				message: __(
+					'Could not find the active variant to use as the structure source.',
+					'ab-test-block'
+				),
+			} );
+			return;
+		}
+
+		const sourceInnerBlocks = Array.isArray(
+			sourceVariantBlock.innerBlocks
+		)
+			? sourceVariantBlock.innerBlocks
+			: [];
+		const changedTargets: VariantKey[] = [];
+		const missingTargets: VariantKey[] = [];
+
+		variantKeys
+			.filter( ( variantKey ) => variantKey !== activePreviewVariantKey )
+			.forEach( ( targetVariantKey ) => {
+				const targetVariantBlock =
+					innerBlockByVariant.get( targetVariantKey );
+
+				if ( ! targetVariantBlock ) {
+					missingTargets.push( targetVariantKey );
+					return;
+				}
+
+				const targetInnerBlocks = Array.isArray(
+					targetVariantBlock.innerBlocks
+				)
+					? targetVariantBlock.innerBlocks
+					: [];
+				const syncResult = syncVariantBlockTree(
+					sourceInnerBlocks,
+					targetInnerBlocks
+				);
+
+				if ( ! syncResult.changed ) {
+					return;
+				}
+
+				replaceInnerBlocks(
+					targetVariantBlock.clientId,
+					syncResult.blocks as unknown[],
+					false
+				);
+				changedTargets.push( targetVariantKey );
+			} );
+
+		if ( missingTargets.length > 0 ) {
+			setVariantStructureFeedback( {
+				kind: 'warning',
+				message: sprintf(
+					/* translators: %s: missing variant labels */
+					__(
+						'Could not sync structure because %s is missing from the editor tree.',
+						'ab-test-block'
+					),
+					formatVariantLabels( missingTargets )
+				),
+			} );
+			return;
+		}
+
+		if ( changedTargets.length === 0 ) {
+			setVariantStructureFeedback( {
+				kind: 'success',
+				message: __(
+					'No structural differences found.',
+					'ab-test-block'
+				),
+			} );
+			return;
+		}
+
+		setVariantStructureFeedback( {
+			kind: 'success',
+			message: sprintf(
+				/* translators: %s: target variants */
+				__( 'Synced structure to %s.', 'ab-test-block' ),
+				formatVariantLabels( changedTargets )
+			),
+		} );
 	}
 
 	function swapPrimaryVariants() {
@@ -1694,6 +1809,43 @@ export default function Edit( {
 								'Use current winner as new baseline becomes available after a manual or automatic winner resolves.',
 								'ab-test-block'
 							) }
+						</p>
+					) }
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Variant structure', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ sprintf(
+							/* translators: %s: variant key */
+							__(
+								'Variant %s is the current structure source. Matching blocks keep their target content when the block type and order line up.',
+								'ab-test-block'
+							),
+							activePreviewVariantKey.toUpperCase()
+						) }
+					</p>
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ __(
+							'Missing blocks are filled from the active variant structure, and extra blocks are removed from the target variants.',
+							'ab-test-block'
+						) }
+					</p>
+					<Button
+						variant="secondary"
+						onClick={ syncStructureFromActiveVariant }
+					>
+						{ __(
+							'Sync structure from active variant',
+							'ab-test-block'
+						) }
+					</Button>
+					{ variantStructureFeedback && (
+						<p
+							className={ `wp-block-abtest-block-test__sidebar-note wp-block-abtest-block-test__sidebar-note--${ variantStructureFeedback.kind }` }
+						>
+							{ variantStructureFeedback.message }
 						</p>
 					) }
 				</PanelBody>
@@ -2954,6 +3106,72 @@ function cloneInnerBlocks( blocks: BlockRecord[] ) {
 	) as unknown as BlockRecord[];
 }
 
+function cloneBlockRecord( block: BlockRecord ) {
+	return cloneInnerBlocks( [ block ] )[ 0 ] as BlockRecord;
+}
+
+function syncVariantBlockTree(
+	sourceBlocks: BlockRecord[],
+	targetBlocks: BlockRecord[]
+): VariantStructureSyncResult {
+	const targetBlocksByName = new Map< string, BlockRecord[] >();
+	const sourceOccurrenceCounts = new Map< string, number >();
+	let changed = sourceBlocks.length !== targetBlocks.length;
+
+	targetBlocks.forEach( ( block ) => {
+		const blockName = block.name ?? '';
+		const existingEntries = targetBlocksByName.get( blockName ) ?? [];
+
+		existingEntries.push( block );
+		targetBlocksByName.set( blockName, existingEntries );
+	} );
+
+	const blocks = sourceBlocks.map( ( sourceBlock, index ) => {
+		const blockName = sourceBlock.name ?? '';
+		const occurrenceIndex = sourceOccurrenceCounts.get( blockName ) ?? 0;
+		const matchingTargetBlock =
+			targetBlocksByName.get( blockName )?.[ occurrenceIndex ];
+
+		sourceOccurrenceCounts.set( blockName, occurrenceIndex + 1 );
+
+		if ( ! matchingTargetBlock ) {
+			changed = true;
+			return cloneBlockRecord( sourceBlock );
+		}
+
+		const didOrderChange =
+			targetBlocks[ index ]?.clientId !== matchingTargetBlock.clientId;
+		if ( didOrderChange ) {
+			changed = true;
+		}
+
+		const syncedInnerBlocks = syncVariantBlockTree(
+			Array.isArray( sourceBlock.innerBlocks )
+				? sourceBlock.innerBlocks
+				: [],
+			Array.isArray( matchingTargetBlock.innerBlocks )
+				? matchingTargetBlock.innerBlocks
+				: []
+		);
+
+		if ( ! syncedInnerBlocks.changed && ! didOrderChange ) {
+			return matchingTargetBlock;
+		}
+
+		changed = true;
+
+		return cloneBlockRecord( {
+			...matchingTargetBlock,
+			innerBlocks: syncedInnerBlocks.blocks,
+		} );
+	} );
+
+	return {
+		blocks,
+		changed,
+	};
+}
+
 function createFreshExperimentIdentity(
 	attributes: AbTestExperimentAttributes
 ) {
@@ -2971,6 +3189,32 @@ function createFreshExperimentIdentity(
 				? getDefaultPreviewQueryKey( nextExperimentId )
 				: attributes.previewQueryKey,
 	};
+}
+
+function formatVariantLabels( variantKeys: VariantKey[] ) {
+	const labels = variantKeys.map(
+		( variantKey ) => `Variant ${ variantKey.toUpperCase() }`
+	);
+
+	if ( labels.length <= 1 ) {
+		return labels[ 0 ] ?? '';
+	}
+
+	if ( labels.length === 2 ) {
+		return sprintf(
+			/* translators: 1: first variant label, 2: second variant label */
+			__( '%1$s and %2$s', 'ab-test-block' ),
+			labels[ 0 ],
+			labels[ 1 ]
+		);
+	}
+
+	return sprintf(
+		/* translators: 1: comma-separated variant labels, 2: final variant label */
+		__( '%1$s, and %2$s', 'ab-test-block' ),
+		labels.slice( 0, -1 ).join( ', ' ),
+		labels[ labels.length - 1 ]
+	);
 }
 
 async function copyTextToClipboard( value: string ) {

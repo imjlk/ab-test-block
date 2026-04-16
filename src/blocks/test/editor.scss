@@ -22,6 +22,14 @@
 		line-height: 1.5;
 	}
 
+	&__sidebar-note--success {
+		color: #0f5f3c;
+	}
+
+	&__sidebar-note--warning {
+		color: #8a4b1f;
+	}
+
 	&__stats-actions {
 		margin: 0;
 	}

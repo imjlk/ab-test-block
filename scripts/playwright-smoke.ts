@@ -6,7 +6,8 @@ import { chromium, type Browser, type Page } from 'playwright';
 type SmokeMode = 'core' | 'editor' | 'full';
 type FrontRenderMode = 'css-hide' | 'dom-prune';
 type StickyScope = 'experiment' | 'instance';
-type VariantKey = 'a' | 'b';
+type VariantKey = 'a' | 'b' | 'c';
+type VariantCount = 2 | 3;
 
 const BASE_URL = process.env.AB_TEST_BLOCK_SITE_URL ?? 'http://localhost:8890';
 const ADMIN_USER = process.env.AB_TEST_BLOCK_ADMIN_USER ?? 'admin';
@@ -27,6 +28,10 @@ function writeLog( value: string ) {
 
 function writeWarning( value: string ) {
 	process.stderr.write( `${ value }\n` );
+}
+
+function escapeRegExp( value: string ) {
+	return value.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
 }
 
 function assert( condition: unknown, message: string ): asserts condition {
@@ -98,6 +103,10 @@ function buildParagraph( text: string ) {
 	return `<!-- wp:paragraph --><p>${ text }</p><!-- /wp:paragraph -->`;
 }
 
+function buildButton( text: string ) {
+	return `<!-- wp:buttons --><div class="wp-block-buttons"><!-- wp:button --><div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="#smoke-button">${ text }</a></div><!-- /wp:button --></div><!-- /wp:buttons -->`;
+}
+
 function buildVariantBlock( variantKey: VariantKey, html: string ) {
 	return `<!-- wp:abtest-block/variant ${ JSON.stringify( {
 		variantKey,
@@ -115,8 +124,13 @@ function buildExperimentBlock( {
 	showRuntimeLabel = false,
 	stickyAssignment = true,
 	stickyScope = 'instance',
+	variantAContent,
 	variantABody,
+	variantBContent,
 	variantBBody,
+	variantCContent,
+	variantCBody = 'Variant C body',
+	variantCount = 2,
 	weights,
 	winnerMode = 'off',
 }: {
@@ -129,11 +143,17 @@ function buildExperimentBlock( {
 	showRuntimeLabel?: boolean;
 	stickyAssignment?: boolean;
 	stickyScope?: StickyScope;
+	variantAContent?: string;
 	variantABody: string;
+	variantBContent?: string;
 	variantBBody: string;
+	variantCContent?: string;
+	variantCBody?: string;
+	variantCount?: VariantCount;
 	weights?: {
 		a: number;
 		b: number;
+		c?: number;
 	};
 	winnerMode?: 'automatic' | 'manual' | 'off';
 } ) {
@@ -158,11 +178,19 @@ function buildExperimentBlock( {
 		stickyScope,
 		trackClicks: true,
 		trackImpressions: true,
-		variantCount: 2,
-		weights: weights ?? {
-			a: 50,
-			b: 50,
-		},
+		variantCount,
+		weights:
+			weights ??
+			( variantCount === 3
+				? {
+						a: 34,
+						b: 33,
+						c: 33,
+				  }
+				: {
+						a: 50,
+						b: 50,
+				  } ),
 		winnerMode,
 	};
 
@@ -170,11 +198,18 @@ function buildExperimentBlock( {
 		attributes
 	) } -->${ buildVariantBlock(
 		'a',
-		buildParagraph( variantABody )
+		variantAContent ?? buildParagraph( variantABody )
 	) }${ buildVariantBlock(
 		'b',
-		buildParagraph( variantBBody )
-	) }<!-- /wp:abtest-block/test -->`;
+		variantBContent ?? buildParagraph( variantBBody )
+	) }${
+		variantCount === 3
+			? buildVariantBlock(
+					'c',
+					variantCContent ?? buildParagraph( variantCBody )
+			  )
+			: ''
+	}<!-- /wp:abtest-block/test -->`;
 }
 
 function buildSingleVariantExperimentBlock( {
@@ -519,42 +554,37 @@ async function getVariantCanvasTexts(
 async function openSidebarPanel( page: Page, title: string ) {
 	const sidebar = page.locator( '.interface-interface-skeleton__sidebar' );
 	await sidebar.waitFor( { state: 'visible', timeout: 30000 } );
-	await page.evaluate( ( panelTitle ) => {
-		const sidebarElement = document.querySelector(
-			'.interface-interface-skeleton__sidebar'
-		);
-		const buttons = Array.from(
-			sidebarElement?.querySelectorAll( 'button' ) ?? []
-		) as HTMLButtonElement[];
-		const blockTab = buttons.find(
-			( element ) => element.textContent?.trim() === 'Block'
-		);
+	const blockTab = sidebar.getByRole( 'button', {
+		name: new RegExp( `^${ escapeRegExp( 'Block' ) }$`, 'i' ),
+	} );
 
-		blockTab?.click();
+	if ( ( await blockTab.count() ) > 0 ) {
+		await blockTab.first().click();
+	}
 
-		const toggle = buttons.find(
-			( element ) => element.textContent?.trim() === panelTitle
-		);
+	const exactToggle = sidebar.getByRole( 'button', {
+		name: new RegExp( `^${ escapeRegExp( title ) }$`, 'i' ),
+	} );
+	const fallbackToggle = sidebar.getByRole( 'button', {
+		name: new RegExp( escapeRegExp( title ), 'i' ),
+	} );
+	const hasExactToggle = ( await exactToggle.count() ) > 0;
+	const hasFallbackToggle = ( await fallbackToggle.count() ) > 0;
 
-		if ( ! toggle ) {
-			throw new Error( `Missing sidebar panel toggle: ${ panelTitle }` );
-		}
+	if ( ! hasExactToggle && ! hasFallbackToggle ) {
+		throw new Error( `Missing sidebar panel toggle: ${ title }` );
+	}
 
-		if ( toggle.getAttribute( 'aria-expanded' ) !== 'true' ) {
-			toggle.click();
-		}
-	}, title );
-	await page.waitForFunction(
-		( panelTitle ) => {
-			const sidebarElement = document.querySelector(
-				'.interface-interface-skeleton__sidebar'
-			);
+	const toggle = hasExactToggle
+		? exactToggle.first()
+		: fallbackToggle.first();
 
-			return sidebarElement?.textContent?.includes( panelTitle ) ?? false;
-		},
-		title,
-		{ timeout: 30000 }
-	);
+	await toggle.scrollIntoViewIfNeeded();
+
+	if ( ( await toggle.getAttribute( 'aria-expanded' ) ) !== 'true' ) {
+		await toggle.click();
+	}
+
 	await page.waitForTimeout( 1000 );
 
 	return sidebar;
@@ -751,6 +781,85 @@ async function insertButtonIntoVariant(
 		{
 			blockInstanceId,
 			text,
+			variantKey,
+		}
+	);
+}
+
+async function moveLastBlockToTopInVariant(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey
+) {
+	await page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						data: {
+							dispatch: ( store: string ) => {
+								moveBlocksToPosition: (
+									clientIds: string[],
+									fromRootClientId: string,
+									toRootClientId: string,
+									index: number
+								) => void;
+							};
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									clientId: string;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										clientId: string;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+
+			const editor = wpData.data.select( 'core/block-editor' );
+			const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if (
+				! variantBlock ||
+				! Array.isArray( variantBlock.innerBlocks ) ||
+				variantBlock.innerBlocks.length < 2
+			) {
+				throw new Error(
+					'Variant does not contain enough blocks to reorder'
+				);
+			}
+
+			const lastBlock =
+				variantBlock.innerBlocks[ variantBlock.innerBlocks.length - 1 ];
+
+			dispatcher.moveBlocksToPosition(
+				[ lastBlock.clientId ],
+				variantBlock.clientId,
+				variantBlock.clientId,
+				0
+			);
+		},
+		{
+			blockInstanceId,
 			variantKey,
 		}
 	);
@@ -986,6 +1095,64 @@ async function getSelectedBlockClassName( page: Page ) {
 			? selectedBlock.attributes.className
 			: '';
 	} );
+}
+
+async function getVariantInnerBlockNames(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey
+) {
+	return page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						data: {
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										innerBlocks?: Array< unknown >;
+										name: string;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+			const editor = wpData.data.select( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if (
+				! variantBlock ||
+				! Array.isArray( variantBlock.innerBlocks )
+			) {
+				throw new Error( 'Missing variant block' );
+			}
+
+			return variantBlock.innerBlocks.map( ( block ) => block.name );
+		},
+		{
+			blockInstanceId,
+			variantKey,
+		}
+	);
 }
 
 async function getVisibleVariantTexts( page: Page ) {
@@ -1443,6 +1610,8 @@ async function runEditorSmoke(
 	malformedPostId: number,
 	lifecyclePostId: number,
 	authoringPostId: number,
+	structureSyncPostId: number,
+	structureSyncThreeVariantPostId: number,
 	reasonPostId: number,
 	candidatePostId: number
 ) {
@@ -1910,6 +2079,158 @@ async function runEditorSmoke(
 		'Expected Copy active variant to duplicate the visible variant block tree into the requested target variant'
 	);
 
+	await openEditor( adminPage, structureSyncPostId );
+	const structureFrame = await selectParentBlock(
+		adminPage,
+		'e2estructure1'
+	);
+	await insertHeadingIntoVariant(
+		adminPage,
+		'e2estructure1',
+		'a',
+		'Structure Sync Heading'
+	);
+	await structureFrame
+		.getByText( 'Structure Sync Heading' )
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	await selectParentBlock( adminPage, 'e2estructure1' );
+	const structureSidebar = await openSidebarPanel(
+		adminPage,
+		'Variant structure'
+	);
+	await structureSidebar
+		.getByRole( 'button', {
+			name: 'Sync structure from active variant',
+		} )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const structureSidebarText = ( await structureSidebar.innerText() ).replace(
+		/\s+/g,
+		' '
+	);
+	assert(
+		structureSidebarText.includes( 'Synced structure to Variant B.' ),
+		'Expected Variant structure to confirm the A/B sync targets'
+	);
+	const structureAfterInsert = await getVariantCanvasTexts(
+		adminPage,
+		structureFrame,
+		[ 'a', 'b' ]
+	);
+	assert(
+		structureAfterInsert.b.includes( 'Structure Sync Variant B body' ) &&
+			structureAfterInsert.b.includes( 'Structure B CTA' ) &&
+			structureAfterInsert.b.includes( 'Structure Sync Heading' ),
+		'Expected structure sync to add the missing block while preserving existing Variant B content'
+	);
+	await adminPage
+		.locator( '[role="toolbar"] button[aria-label="Edit Variant A"]' )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	await moveLastBlockToTopInVariant( adminPage, 'e2estructure1', 'a' );
+	await adminPage.waitForTimeout( 500 );
+	const structureSourceOrder = await getVariantInnerBlockNames(
+		adminPage,
+		'e2estructure1',
+		'a'
+	);
+	await structureSidebar
+		.getByRole( 'button', {
+			name: 'Sync structure from active variant',
+		} )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const structureAfterReorder = await getVariantCanvasTexts(
+		adminPage,
+		structureFrame,
+		[ 'a', 'b' ]
+	);
+	const structureTargetOrder = await getVariantInnerBlockNames(
+		adminPage,
+		'e2estructure1',
+		'b'
+	);
+	assert(
+		JSON.stringify( structureTargetOrder ) ===
+			JSON.stringify( structureSourceOrder ) &&
+			structureAfterReorder.b.includes(
+				'Structure Sync Variant B body'
+			) &&
+			structureAfterReorder.b.includes( 'Structure B CTA' ),
+		`Expected structure sync to reorder matching blocks while keeping Variant B content intact. Source: ${ JSON.stringify(
+			structureSourceOrder
+		) }, target: ${ JSON.stringify( structureTargetOrder ) }, text: ${
+			structureAfterReorder.b
+		}`
+	);
+	await structureSidebar
+		.getByRole( 'button', {
+			name: 'Sync structure from active variant',
+		} )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	assert(
+		( await structureSidebar.innerText() )
+			.replace( /\s+/g, ' ' )
+			.includes( 'No structural differences found.' ),
+		'Expected a second structure sync with no changes to report the no-op message'
+	);
+
+	await openEditor( adminPage, structureSyncThreeVariantPostId );
+	const structureThreeFrame = await selectParentBlock(
+		adminPage,
+		'e2estructure3'
+	);
+	await insertHeadingIntoVariant(
+		adminPage,
+		'e2estructure3',
+		'a',
+		'Three Variant Structure Heading'
+	);
+	await structureThreeFrame
+		.getByText( 'Three Variant Structure Heading' )
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	await selectParentBlock( adminPage, 'e2estructure3' );
+	const structureThreeSidebar = await openSidebarPanel(
+		adminPage,
+		'Variant structure'
+	);
+	await structureThreeSidebar
+		.getByRole( 'button', {
+			name: 'Sync structure from active variant',
+		} )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const structureThreeSidebarText = (
+		await structureThreeSidebar.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		structureThreeSidebarText.includes(
+			'Synced structure to Variant B and Variant C.'
+		),
+		'Expected Variant structure to report both target variants in the A/B/C sync flow'
+	);
+	const structureThreeTexts = await getVariantCanvasTexts(
+		adminPage,
+		structureThreeFrame,
+		[ 'a', 'b', 'c' ]
+	);
+	assert(
+		structureThreeTexts.b.includes( 'Three Variant Structure Heading' ) &&
+			structureThreeTexts.b.includes(
+				'Structure Three Variant B body'
+			) &&
+			structureThreeTexts.b.includes( 'Structure Three B CTA' ) &&
+			structureThreeTexts.c.includes(
+				'Three Variant Structure Heading'
+			) &&
+			structureThreeTexts.c.includes(
+				'Structure Three Variant C body'
+			) &&
+			structureThreeTexts.c.includes( 'Structure Three C CTA' ),
+		'Expected Variant structure sync to apply the same source structure to both Variant B and Variant C while preserving their content'
+	);
+
 	await openEditor( adminPage, reasonPostId );
 	await selectParentBlock( adminPage, 'e2ereason1' );
 	const rulesSidebar = await openSidebarPanel( adminPage, 'Winning Rules' );
@@ -2047,6 +2368,43 @@ async function run() {
 			) }${ buildParagraph( 'Authoring Variant B detail' ) }`,
 		} )
 	);
+	const structureSyncPostId = createFixturePost(
+		'E2E Variant Structure Sync Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2estructure1',
+			experimentId: 'e2e_structure_sync_fixture',
+			experimentLabel: 'Structure Sync Fixture',
+			variantABody: 'Structure Sync Variant A body',
+			variantAContent: `${ buildParagraph(
+				'Structure Sync Variant A body'
+			) }${ buildButton( 'Structure A CTA' ) }`,
+			variantBBody: 'Structure Sync Variant B body',
+			variantBContent: `${ buildParagraph(
+				'Structure Sync Variant B body'
+			) }${ buildButton( 'Structure B CTA' ) }`,
+		} )
+	);
+	const structureSyncThreeVariantPostId = createFixturePost(
+		'E2E Variant Structure Sync Three-Up Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2estructure3',
+			experimentId: 'e2e_structure_sync_three_fixture',
+			experimentLabel: 'Structure Sync Three Fixture',
+			variantABody: 'Structure Three Variant A body',
+			variantAContent: `${ buildParagraph(
+				'Structure Three Variant A body'
+			) }${ buildButton( 'Structure Three A CTA' ) }`,
+			variantBBody: 'Structure Three Variant B body',
+			variantBContent: `${ buildParagraph(
+				'Structure Three Variant B body'
+			) }${ buildButton( 'Structure Three B CTA' ) }`,
+			variantCBody: 'Structure Three Variant C body',
+			variantCContent: `${ buildParagraph(
+				'Structure Three Variant C body'
+			) }${ buildButton( 'Structure Three C CTA' ) }`,
+			variantCount: 3,
+		} )
+	);
 	const reasonPostId = createFixturePost(
 		'E2E Winner Reason Fixture',
 		buildExperimentBlock( {
@@ -2102,6 +2460,8 @@ async function run() {
 			malformedEditorPostId,
 			lifecyclePostId,
 			authoringPostId,
+			structureSyncPostId,
+			structureSyncThreeVariantPostId,
 			reasonPostId,
 			candidatePostId
 		);
