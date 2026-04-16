@@ -16,6 +16,18 @@
 			],
 			"type": "string"
 		},
+		"reasonCode": {
+			"enum": [
+				"off",
+				"manual",
+				"locked",
+				"candidate",
+				"thresholds-not-met",
+				"tie",
+				"insufficient-data"
+			],
+			"type": "string"
+		},
 		"winner": {
 			"enum": [
 				"a",
@@ -255,6 +267,7 @@
 	"required": [
 		"status",
 		"metric",
+		"reasonCode",
 		"evaluatedAt",
 		"variants",
 		"stats"

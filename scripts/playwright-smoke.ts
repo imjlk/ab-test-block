@@ -93,22 +93,31 @@ function buildExperimentBlock( {
 	experimentLabel,
 	emitDataLayer = false,
 	frontRenderMode = 'dom-prune',
+	manualWinner,
 	showRuntimeLabel = false,
 	stickyAssignment = true,
 	stickyScope = 'instance',
 	variantABody,
 	variantBBody,
+	weights,
+	winnerMode = 'off',
 }: {
 	blockInstanceId: string;
 	experimentId: string;
 	experimentLabel: string;
 	emitDataLayer?: boolean;
 	frontRenderMode?: FrontRenderMode;
+	manualWinner?: VariantKey;
 	showRuntimeLabel?: boolean;
 	stickyAssignment?: boolean;
 	stickyScope?: StickyScope;
 	variantABody: string;
 	variantBBody: string;
+	weights?: {
+		a: number;
+		b: number;
+	};
+	winnerMode?: 'automatic' | 'manual' | 'off';
 } ) {
 	const attributes = {
 		automaticMetric: 'ctr',
@@ -124,6 +133,7 @@ function buildExperimentBlock( {
 		lockWinnerAfterSelection: true,
 		minimumClicksPerVariant: 1,
 		minimumImpressionsPerVariant: 100,
+		manualWinner,
 		previewQueryKey: `ab_${ experimentId }`,
 		showRuntimeLabel,
 		stickyAssignment,
@@ -131,11 +141,11 @@ function buildExperimentBlock( {
 		trackClicks: true,
 		trackImpressions: true,
 		variantCount: 2,
-		weights: {
+		weights: weights ?? {
 			a: 50,
 			b: 50,
 		},
-		winnerMode: 'off',
+		winnerMode,
 	};
 
 	return `<!-- wp:abtest-block/test ${ JSON.stringify(
@@ -455,6 +465,39 @@ async function selectParentBlock( page: Page, blockInstanceId: string ) {
 	return page.frameLocator( 'iframe[name="editor-canvas"]' );
 }
 
+async function getVisibleVariantCanvasText(
+	frame: ReturnType< Page[ 'frameLocator' ] >
+) {
+	return (
+		await frame
+			.locator( '.wp-block-abtest-block-variant.is-active' )
+			.first()
+			.innerText()
+	)
+		.replace( /\s+/g, ' ' )
+		.trim();
+}
+
+async function getVariantCanvasTexts(
+	page: Page,
+	frame: ReturnType< Page[ 'frameLocator' ] >,
+	variantKeys: VariantKey[]
+) {
+	const snapshot = {} as Record< VariantKey, string >;
+
+	for ( const variantKey of variantKeys ) {
+		await page
+			.locator(
+				`[role="toolbar"] button[aria-label="Edit Variant ${ variantKey.toUpperCase() }"]`
+			)
+			.click();
+		await page.waitForTimeout( 400 );
+		snapshot[ variantKey ] = await getVisibleVariantCanvasText( frame );
+	}
+
+	return snapshot;
+}
+
 async function openSidebarPanel( page: Page, title: string ) {
 	const sidebar = page.locator( '.interface-interface-skeleton__sidebar' );
 	await sidebar.waitFor( { state: 'visible', timeout: 30000 } );
@@ -611,6 +654,90 @@ async function insertHeadingIntoVariant(
 	);
 }
 
+async function insertButtonIntoVariant(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey,
+	text: string
+) {
+	await page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						blocks: {
+							createBlock: (
+								name: string,
+								attributes?: Record< string, unknown >,
+								innerBlocks?: unknown[]
+							) => unknown;
+						};
+						data: {
+							dispatch: ( store: string ) => {
+								insertBlocks: (
+									blocks: unknown,
+									index?: number,
+									rootClientId?: string
+								) => void;
+							};
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									clientId: string;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										clientId: string;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+
+			const editor = wpData.data.select( 'core/block-editor' );
+			const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if ( ! variantBlock ) {
+				throw new Error( 'Missing variant block' );
+			}
+
+			const buttonBlock = wpData.blocks.createBlock( 'core/buttons', {}, [
+				wpData.blocks.createBlock( 'core/button', {
+					text: payload.text,
+					url: '#smoke-cta',
+				} ),
+			] );
+
+			dispatcher.insertBlocks(
+				buttonBlock,
+				undefined,
+				variantBlock.clientId
+			);
+		},
+		{
+			blockInstanceId,
+			text,
+			variantKey,
+		}
+	);
+}
+
 async function removeHeadingFromVariant(
 	page: Page,
 	blockInstanceId: string,
@@ -690,6 +817,157 @@ async function removeHeadingFromVariant(
 			variantKey,
 		}
 	);
+}
+
+async function selectInnerBlockByName(
+	page: Page,
+	blockInstanceId: string,
+	variantKey: VariantKey,
+	blockName: string
+) {
+	await page.evaluate(
+		( payload ) => {
+			const wpData = (
+				window as typeof window & {
+					wp: {
+						data: {
+							dispatch: ( store: string ) => {
+								selectBlock: ( clientId: string ) => void;
+							};
+							select: ( store: string ) => {
+								getBlocks: () => Array< {
+									attributes: Record< string, unknown >;
+									clientId: string;
+									innerBlocks: Array< {
+										attributes: Record< string, unknown >;
+										clientId: string;
+										innerBlocks?: Array< unknown >;
+										name: string;
+									} >;
+								} >;
+							};
+						};
+					};
+				}
+			 ).wp;
+			const editor = wpData.data.select( 'core/block-editor' );
+			const dispatcher = wpData.data.dispatch( 'core/block-editor' );
+			const parentBlock = editor
+				.getBlocks()
+				.find(
+					( block ) =>
+						block.attributes.blockInstanceId ===
+						payload.blockInstanceId
+				);
+
+			if ( ! parentBlock ) {
+				throw new Error( 'Missing A/B test parent block' );
+			}
+
+			const variantBlock = parentBlock.innerBlocks.find(
+				( block ) => block.attributes.variantKey === payload.variantKey
+			);
+
+			if ( ! variantBlock ) {
+				throw new Error( 'Missing variant block' );
+			}
+
+			const queue = [ ...variantBlock.innerBlocks ] as Array< {
+				clientId: string;
+				innerBlocks?: Array< unknown >;
+				name: string;
+			} >;
+			let targetClientId: string | undefined;
+
+			while ( queue.length > 0 ) {
+				const block = queue.shift();
+
+				if ( ! block ) {
+					continue;
+				}
+
+				if ( block.name === payload.blockName ) {
+					targetClientId = block.clientId;
+					break;
+				}
+
+				if ( Array.isArray( block.innerBlocks ) ) {
+					queue.push(
+						...( block.innerBlocks as Array< {
+							clientId: string;
+							innerBlocks?: Array< unknown >;
+							name: string;
+						} > )
+					);
+				}
+			}
+
+			if ( ! targetClientId ) {
+				throw new Error( `Missing ${ payload.blockName } block` );
+			}
+
+			dispatcher.selectBlock( targetClientId );
+		},
+		{
+			blockInstanceId,
+			blockName,
+			variantKey,
+		}
+	);
+}
+
+async function getSelectedExperimentAttributeSnapshot( page: Page ) {
+	return page.evaluate( () => {
+		const wpData = (
+			window as typeof window & {
+				wp: {
+					data: {
+						select: ( store: string ) => {
+							getBlock: ( clientId: string | null ) => {
+								attributes: Record< string, unknown >;
+							} | null;
+							getSelectedBlockClientId: () => string | null;
+						};
+					};
+				};
+			}
+		 ).wp;
+		const editor = wpData.data.select( 'core/block-editor' );
+		const selectedClientId = editor.getSelectedBlockClientId();
+		const selectedBlock = editor.getBlock( selectedClientId );
+
+		if ( ! selectedBlock ) {
+			throw new Error( 'Missing selected block' );
+		}
+
+		return selectedBlock.attributes;
+	} );
+}
+
+async function getSelectedBlockClassName( page: Page ) {
+	return page.evaluate( () => {
+		const wpData = (
+			window as typeof window & {
+				wp: {
+					data: {
+						select: ( store: string ) => {
+							getBlock: ( clientId: string | null ) => {
+								attributes: Record< string, unknown >;
+							} | null;
+							getSelectedBlockClientId: () => string | null;
+						};
+					};
+				};
+			}
+		 ).wp;
+		const editor = wpData.data.select( 'core/block-editor' );
+		const selectedClientId = editor.getSelectedBlockClientId();
+		const selectedBlock = editor.getBlock( selectedClientId );
+
+		return typeof selectedBlock?.attributes.className === 'string'
+			? selectedBlock.attributes.className
+			: '';
+	} );
 }
 
 async function getVisibleVariantTexts( page: Page ) {
@@ -1142,7 +1420,13 @@ async function runCoreSmoke( statsPostId: number ) {
 	);
 }
 
-async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
+async function runEditorSmoke(
+	statsPostId: number,
+	malformedPostId: number,
+	lifecyclePostId: number,
+	authoringPostId: number,
+	reasonPostId: number
+) {
 	const frontContext = await launchContext( createFrontInitScript() );
 	const frontPage = await frontContext.newPage();
 
@@ -1254,13 +1538,13 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 	const debugText = await sidebar.innerText();
 	const normalizedDebugText = debugText.replace( /\s+/g, ' ' );
 	const hasAssignmentSourceSummary = [
-		'weighted traffic split',
+		'traffic split',
 		'Sticky assignment for this block',
 		'Sticky assignment for this experiment',
 		'Manual winner preview',
 		'Locked automatic winner',
 		'Automatic winner candidate',
-		'No resolved winner yet',
+		'No winner yet:',
 	].some( ( value ) => normalizedDebugText.includes( value ) );
 	assert(
 		normalizedDebugText.includes( 'This block' ) &&
@@ -1410,6 +1694,215 @@ async function runEditorSmoke( statsPostId: number, malformedPostId: number ) {
 		'Expected the toolbar assignment label toggle to hide the mirrored editor label'
 	);
 
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	await insertButtonIntoVariant(
+		adminPage,
+		'e2einstats1',
+		'a',
+		'Inserted CTA button'
+	);
+	await adminPage.waitForTimeout( 500 );
+	await selectInnerBlockByName(
+		adminPage,
+		'e2einstats1',
+		'a',
+		'core/button'
+	);
+	await adminPage.waitForTimeout( 500 );
+	const primaryCtaToolbarButton = adminPage
+		.locator( '[role="toolbar"] button' )
+		.filter( {
+			hasText: 'Primary CTA',
+		} )
+		.first();
+	assert(
+		( await primaryCtaToolbarButton.count() ) === 1,
+		'Expected a Primary CTA toolbar button while a CTA-capable inner block is selected'
+	);
+	await primaryCtaToolbarButton.click();
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		( await getSelectedBlockClassName( adminPage ) ).includes(
+			'abtest-cta'
+		),
+		'Expected the selected CTA block to receive the abtest-cta class from the toolbar action'
+	);
+	assert(
+		( await primaryCtaToolbarButton.getAttribute( 'aria-pressed' ) ) ===
+			'true',
+		'Expected the toolbar Primary CTA toggle to reflect the selected CTA state'
+	);
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	await adminPage.waitForTimeout( 400 );
+	const trackingSidebar = await openSidebarPanel( adminPage, 'Tracking' );
+	assert(
+		( await trackingSidebar
+			.getByRole( 'button', { name: 'Remove primary CTA' } )
+			.count() ) === 1,
+		'Expected Tracking to remember the last selected CTA-capable block while the parent block is selected'
+	);
+	await trackingSidebar
+		.getByRole( 'button', { name: 'Remove primary CTA' } )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	await selectInnerBlockByName(
+		adminPage,
+		'e2einstats1',
+		'a',
+		'core/button'
+	);
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		! ( await getSelectedBlockClassName( adminPage ) ).includes(
+			'abtest-cta'
+		),
+		'Expected the Tracking panel CTA action to remove the explicit CTA class from the remembered CTA block'
+	);
+
+	await openEditor( adminPage, lifecyclePostId );
+	const lifecycleFrame = await selectParentBlock(
+		adminPage,
+		'e2elifecycle1'
+	);
+	const lifecycleBefore =
+		await getSelectedExperimentAttributeSnapshot( adminPage );
+	const lifecycleSidebar = await openSidebarPanel(
+		adminPage,
+		'Experiment lifecycle'
+	);
+	assert(
+		( await lifecycleSidebar
+			.getByRole( 'button', {
+				name: 'Use current winner as new baseline',
+			} )
+			.isDisabled() ) === false,
+		'Expected lifecycle controls to enable the winner baseline action when a winner is already resolved'
+	);
+	await lifecycleSidebar
+		.getByRole( 'button', { name: 'Use current winner as new baseline' } )
+		.click();
+	await adminPage.waitForTimeout( 600 );
+	const lifecycleAfterBaseline =
+		await getSelectedExperimentAttributeSnapshot( adminPage );
+	assert(
+		lifecycleAfterBaseline.experimentId !== lifecycleBefore.experimentId &&
+			lifecycleAfterBaseline.blockInstanceId !==
+				lifecycleBefore.blockInstanceId,
+		'Expected lifecycle baseline action to rotate both experiment identity keys for a fresh experiment history'
+	);
+	assert(
+		lifecycleAfterBaseline.winnerMode === 'off' &&
+			Number( lifecycleAfterBaseline.weights?.a ?? 0 ) === 50 &&
+			Number( lifecycleAfterBaseline.weights?.b ?? 0 ) === 50,
+		'Expected lifecycle baseline action to clear winner mode and equalize weights'
+	);
+	await lifecycleFrame
+		.getByText( 'Lifecycle Variant B body' )
+		.first()
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	const lifecycleBaselineTexts = await getVariantCanvasTexts(
+		adminPage,
+		lifecycleFrame,
+		[ 'a', 'b' ]
+	);
+	assert(
+		lifecycleBaselineTexts.a.includes( 'Lifecycle Variant B body' ) &&
+			lifecycleBaselineTexts.b.includes( 'Lifecycle Variant B body' ),
+		`Expected lifecycle baseline action to copy the resolved winner content into every variant. Snapshot: ${ JSON.stringify(
+			lifecycleBaselineTexts
+		) }`
+	);
+	await lifecycleSidebar
+		.getByRole( 'button', { name: 'Start new experiment' } )
+		.click();
+	await adminPage.waitForTimeout( 600 );
+	const lifecycleAfterRestart =
+		await getSelectedExperimentAttributeSnapshot( adminPage );
+	assert(
+		lifecycleAfterRestart.experimentId !==
+			lifecycleAfterBaseline.experimentId &&
+			lifecycleAfterRestart.blockInstanceId !==
+				lifecycleAfterBaseline.blockInstanceId,
+		'Expected Start new experiment to rotate experiment and block identity again'
+	);
+	await lifecycleFrame
+		.getByText( 'Lifecycle Variant B body' )
+		.first()
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	const lifecycleRestartTexts = await getVariantCanvasTexts(
+		adminPage,
+		lifecycleFrame,
+		[ 'a', 'b' ]
+	);
+	assert(
+		lifecycleRestartTexts.a.includes( 'Lifecycle Variant B body' ) &&
+			lifecycleRestartTexts.b.includes( 'Lifecycle Variant B body' ),
+		'Expected Start new experiment to keep the current variant content in place'
+	);
+
+	await openEditor( adminPage, authoringPostId );
+	const authoringFrame = await selectParentBlock(
+		adminPage,
+		'e2eauthoring1'
+	);
+	const authoringBefore = await getVariantCanvasTexts(
+		adminPage,
+		authoringFrame,
+		[ 'a', 'b' ]
+	);
+	await adminPage
+		.getByRole( 'button', { name: 'Open quick summary and actions' } )
+		.click();
+	const authoringMenu = adminPage.locator(
+		'.wp-block-abtest-block-test__toolbar-dropdown-content'
+	);
+	await authoringMenu
+		.getByRole( 'menuitem', { name: 'Swap A and B' } )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const authoringAfterSwap = await getVariantCanvasTexts(
+		adminPage,
+		authoringFrame,
+		[ 'a', 'b' ]
+	);
+	assert(
+		authoringAfterSwap.a === authoringBefore.b &&
+			authoringAfterSwap.b === authoringBefore.a,
+		'Expected Swap A and B to exchange the two variant block trees without breaking their content'
+	);
+	await adminPage
+		.locator( '[role="toolbar"] button[aria-label="Edit Variant A"]' )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	await adminPage
+		.getByRole( 'button', { name: 'Open quick summary and actions' } )
+		.click();
+	await authoringMenu
+		.getByRole( 'menuitem', { name: 'Copy active variant to Variant B' } )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const authoringAfterCopy = await getVariantCanvasTexts(
+		adminPage,
+		authoringFrame,
+		[ 'a', 'b' ]
+	);
+	assert(
+		authoringAfterCopy.a === authoringAfterCopy.b,
+		'Expected Copy active variant to duplicate the visible variant block tree into the requested target variant'
+	);
+
+	await openEditor( adminPage, reasonPostId );
+	await selectParentBlock( adminPage, 'e2ereason1' );
+	const reasonSidebar = await openDiagnosticsPanel( adminPage );
+	const reasonSidebarText = ( await reasonSidebar.innerText() ).replace(
+		/\s+/g,
+		' '
+	);
+	assert(
+		reasonSidebarText.includes( 'No winner yet: not enough data' ),
+		'Expected Diagnostics to explain the automatic winner state with the new no-data reason text'
+	);
+
 	await openEditor( adminPage, malformedPostId );
 	await selectParentBlock( adminPage, 'e2eeditormalformed1' );
 	await adminPage.waitForTimeout( 500 );
@@ -1456,13 +1949,62 @@ async function run() {
 			variantABody: 'Editor DOM prune Variant A body',
 		} ) }${ buildParagraph( 'Outside block' ) }`
 	);
+	const lifecyclePostId = createFixturePost(
+		'E2E Experiment Lifecycle Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2elifecycle1',
+			experimentId: 'e2e_lifecycle_fixture',
+			experimentLabel: 'Lifecycle Fixture',
+			manualWinner: 'b',
+			variantABody: 'Lifecycle Variant A body',
+			variantBBody: 'Lifecycle Variant B body',
+			weights: {
+				a: 70,
+				b: 30,
+			},
+			winnerMode: 'manual',
+		} )
+	);
+	const authoringPostId = createFixturePost(
+		'E2E Variant Authoring Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2eauthoring1',
+			experimentId: 'e2e_authoring_fixture',
+			experimentLabel: 'Authoring Fixture',
+			variantABody: 'Authoring Variant A body',
+			variantAContent: `${ buildParagraph(
+				'Authoring Variant A body'
+			) }${ buildParagraph( 'Authoring Variant A detail' ) }`,
+			variantBBody: 'Authoring Variant B body',
+			variantBContent: `${ buildParagraph(
+				'Authoring Variant B body'
+			) }${ buildParagraph( 'Authoring Variant B detail' ) }`,
+		} )
+	);
+	const reasonPostId = createFixturePost(
+		'E2E Winner Reason Fixture',
+		buildExperimentBlock( {
+			blockInstanceId: 'e2ereason1',
+			experimentId: 'e2e_reason_fixture',
+			experimentLabel: 'Reason Fixture',
+			variantABody: 'Reason Variant A body',
+			variantBBody: 'Reason Variant B body',
+			winnerMode: 'automatic',
+		} )
+	);
 
 	if ( RUN_CORE_CHECKS ) {
 		await runCoreSmoke( statsPostId );
 	}
 
 	if ( RUN_EDITOR_CHECKS ) {
-		await runEditorSmoke( statsPostId, malformedEditorPostId );
+		await runEditorSmoke(
+			statsPostId,
+			malformedEditorPostId,
+			lifecyclePostId,
+			authoringPostId,
+			reasonPostId
+		);
 	}
 
 	writeLog( 'Playwright smoke passed.' );

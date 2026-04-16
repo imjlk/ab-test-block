@@ -179,9 +179,7 @@ export function sanitizeExperimentAttributes(
 		typeof attributes.previewQueryKey === 'string' &&
 		attributes.previewQueryKey.trim().length > 0
 			? attributes.previewQueryKey.trim()
-			: `ab_${ experimentId
-					.replace( /[^a-z0-9_]+/gi, '_' )
-					.toLowerCase() }`;
+			: getDefaultPreviewQueryKey( experimentId );
 
 	const rawWeights = sanitizeWeights(
 		attributes.weights ?? DEFAULT_EXPERIMENT_ATTRIBUTES.weights,
@@ -263,6 +261,10 @@ export function sanitizeExperimentAttributes(
 	};
 }
 
+export function getDefaultPreviewQueryKey( experimentId: string ): string {
+	return `ab_${ experimentId.replace( /[^a-z0-9_]+/gi, '_' ).toLowerCase() }`;
+}
+
 export function validateExperimentAttributes(
 	attributes: AbTestExperimentAttributes
 ): string[] {
@@ -307,6 +309,20 @@ export function sanitizeWinnerSnapshot(
 		variantKeys.includes( snapshot.winner )
 			? snapshot.winner
 			: undefined;
+	const reasonCode =
+		snapshot?.reasonCode === 'off' ||
+		snapshot?.reasonCode === 'manual' ||
+		snapshot?.reasonCode === 'locked' ||
+		snapshot?.reasonCode === 'candidate' ||
+		snapshot?.reasonCode === 'thresholds-not-met' ||
+		snapshot?.reasonCode === 'tie'
+			? snapshot.reasonCode
+			: normalized.reasonCode;
+	let nextReasonCode = reasonCode;
+
+	if ( winner ) {
+		nextReasonCode = 'winner-locked' === status ? 'locked' : 'candidate';
+	}
 
 	return {
 		evaluatedAt:
@@ -318,6 +334,7 @@ export function sanitizeWinnerSnapshot(
 				? snapshot.lockedAt
 				: undefined,
 		metric: normalized.metric,
+		reasonCode: nextReasonCode,
 		status: winner ? status : normalized.status,
 		variants: Array.isArray( snapshot?.variants ) ? snapshot.variants : [],
 		windowDays:

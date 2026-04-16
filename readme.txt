@@ -27,6 +27,9 @@ Features included in this version:
 * Front-end output modes for rendering only the chosen variant or keeping all variants in HTML
 * Manual winner selection
 * CTR-based automatic winner reevaluation
+* Editor actions for marking a selected block as the primary CTA
+* Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
+* Variant authoring actions for copying the visible variant or swapping A/B content
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Diagnostics stats for both the current block and shared experiment
@@ -62,11 +65,15 @@ Use either a block-specific preview key such as `?ab_home_hero=b` or the global 
 
 = How is automatic winner selection decided? =
 
-This version uses CTR only. When every eligible variant reaches the minimum thresholds, the highest CTR wins. Ties do not produce a winner.
+This version uses CTR only. When every eligible variant reaches the minimum thresholds, the highest CTR wins. Diagnostics explains when there is still no winner because the minimum data has not been reached or the top CTR is tied.
 
 = How do I mark a CTA? =
 
-Add the Additional CSS class `abtest-cta` to the button or link you want to count as the primary CTA. If you are using custom markup, add the `data-abtest-cta` attribute instead. When no marker is present, the plugin falls back to links and buttons inside the active variant.
+Select the CTA block in the editor and use the `Primary CTA` action from the block toolbar or the `Tracking` panel. If you are using custom markup, add the `data-abtest-cta` attribute instead. When no marker is present, the plugin falls back to links and buttons inside the active variant.
+
+= How do I start a fresh experiment without deleting the old data? =
+
+Use the `Experiment lifecycle` panel. `Start new experiment` rotates the tracking IDs and keeps the current content, while `Use current winner as new baseline` copies the resolved winner into every Variant before starting a new run.
 
 = When is an impression counted? =
 

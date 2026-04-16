@@ -24,6 +24,7 @@ $winner_data = function_exists( 'ab_test_block_get_winner_state' )
 	)
 	: array(
 		'metric'     => 'ctr',
+		'reasonCode' => 'insufficient-data',
 		'status'     => 'no-winner',
 		'variants'   => array(),
 		'windowDays' => (int) $attributes['evaluationWindowDays'],

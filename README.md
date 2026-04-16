@@ -10,6 +10,9 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Front-end render modes for either pruning inactive variants or hiding them after hydration
 -   Sticky assignment scoped either to this page/block or to a shared experiment ID
 -   Manual winner and CTR-based automatic winner
+-   Editor actions for marking a selected block as the primary CTA
+-   Fresh experiment lifecycle actions for starting a new run or using the current winner as a new baseline
+-   Variant productivity actions for copying the visible variant or swapping A/B content
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 -   Server stats surfaced back into the editor Diagnostics panel
@@ -20,7 +23,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   `impression` means the active variant stays at least 50% visible for 1 second.
 -   `click` means the first primary CTA click for the block on the current page.
 -   `abtest_stats` / `abtest:stats` carry saved aggregate stats after counted events.
--   Mark a CTA explicitly with the Additional CSS class `abtest-cta`.
+-   When a CTA-capable block is selected in the editor, use `Primary CTA` from the toolbar or the `Tracking` panel to add the explicit marker automatically.
 -   For custom markup, use the `data-abtest-cta` attribute instead.
 -   If no CTA marker exists inside the active variant, links and buttons fall back automatically.
 
@@ -47,7 +50,8 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 
 -   `GET /wp-json/abtest-block/v1/stats` returns both `instance` and `experiment` snapshots.
 -   `POST /wp-json/abtest-block/v1/event` and `POST /wp-json/abtest-block/v1/reevaluate` both return the latest stats snapshot.
--   The editor Diagnostics panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, and last update time.
+-   Automatic reevaluation now returns a `reasonCode` such as `thresholds-not-met`, `tie`, or `insufficient-data` so Diagnostics and CLI output explain why a winner does or does not exist.
+-   The editor Diagnostics panel shows `This block` and `This experiment` cards with impressions, clicks, CTR, last update time, and short winner explanations.
 
 ## Operations
 

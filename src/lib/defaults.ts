@@ -52,6 +52,7 @@ export function createDefaultWinnerSnapshot(): AbTestWinnerEvaluationSnapshot {
 		evaluatedAt: undefined,
 		lockedAt: undefined,
 		metric: DEFAULT_AUTOMATIC_METRIC,
+		reasonCode: 'insufficient-data',
 		status: 'no-winner',
 		variants: [],
 		windowDays: DEFAULT_EXPERIMENT_ATTRIBUTES.evaluationWindowDays,

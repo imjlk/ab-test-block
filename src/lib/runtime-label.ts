@@ -14,7 +14,7 @@ export function getAssignmentSourceLabel( source: AssignmentSource ) {
 			return 'sticky assignment';
 		case 'weighted-random':
 		default:
-			return 'weighted traffic split';
+			return 'traffic split';
 	}
 }
 
@@ -28,7 +28,7 @@ export function formatRuntimeLabel(
 		return fallback ? `${ experimentId }: ${ fallback }` : '';
 	}
 
-	return `${ experimentId }: Variant ${ variant.toUpperCase() } via ${ getAssignmentSourceLabel(
+	return `${ experimentId }: Variant ${ variant.toUpperCase() } (${ getAssignmentSourceLabel(
 		source
-	) }`;
+	) })`;
 }

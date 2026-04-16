@@ -7,6 +7,14 @@ export type AutomaticMetric = 'ctr';
 export type EventType = 'impression' | 'click';
 export type StickyScope = 'instance' | 'experiment';
 export type FrontRenderMode = 'dom-prune' | 'css-hide';
+export type WinnerReasonCode =
+	| 'off'
+	| 'manual'
+	| 'locked'
+	| 'candidate'
+	| 'thresholds-not-met'
+	| 'tie'
+	| 'insufficient-data';
 export type AssignmentSource =
 	| 'query-preview'
 	| 'locked-winner'
@@ -92,6 +100,7 @@ export interface AbTestVariantStatsSnapshot {
 export interface AbTestWinnerEvaluationSnapshot {
 	status: WinnerLifecycleState;
 	metric: AutomaticMetric;
+	reasonCode: WinnerReasonCode;
 	winner?: VariantKey;
 	evaluatedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
 	lockedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;

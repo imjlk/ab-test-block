@@ -1,4 +1,4 @@
-import { createBlock } from '@wordpress/blocks';
+import { createBlock, getBlockType, parse, serialize } from '@wordpress/blocks';
 import {
 	BlockControls,
 	InspectorControls,
@@ -26,12 +26,14 @@ import { __, sprintf } from '@wordpress/i18n';
 import { fetchStats } from '../../api';
 import {
 	equalizeWeights,
+	getDefaultPreviewQueryKey,
 	getVariantKeys,
 	getVariantLabel,
 	normalizeWeights,
 	sanitizeWinnerSnapshot,
 	sumWeights,
 } from '../../lib/experiment';
+import { generateBlockInstanceId, generateExperimentId } from '../../lib/ids';
 import {
 	formatRuntimeLabel,
 	getAssignmentSourceLabel,
@@ -46,6 +48,7 @@ import type {
 	StickyScope,
 	VariantCount,
 	VariantKey,
+	WinnerReasonCode,
 	WinnerLifecycleState,
 	WinnerMode,
 } from '../../types';
@@ -68,6 +71,7 @@ type BlockRecord = {
 		variantLabel?: string;
 	};
 	innerBlocks?: BlockRecord[];
+	name?: string;
 };
 
 type WinnerPreviewState = {
@@ -77,6 +81,7 @@ type WinnerPreviewState = {
 		| 'manual-winner'
 		| 'no-winner'
 		| 'off';
+	reasonCode: WinnerReasonCode;
 	status: WinnerLifecycleState | 'manual' | 'off';
 	variant?: VariantKey;
 };
@@ -84,6 +89,15 @@ type WinnerPreviewState = {
 type VariantStructureIssue = {
 	fallbackVariant?: VariantKey;
 	missingVariantKeys: VariantKey[];
+};
+
+type SelectedCtaTarget = {
+	blockName: string;
+	className?: string;
+	clientId: string;
+	label: string;
+	variantClientId: string;
+	variantKey: VariantKey;
 };
 
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
@@ -149,6 +163,9 @@ export default function Edit( {
 	const [ copyExperimentIdStatus, setCopyExperimentIdStatus ] = useState<
 		'idle' | 'copied' | 'error'
 	>( 'idle' );
+	const [ lastSelectedCtaTarget, setLastSelectedCtaTarget ] = useState<
+		SelectedCtaTarget | undefined
+	>();
 	const [ structureRepairNote, setStructureRepairNote ] = useState<
 		string | undefined
 	>();
@@ -163,76 +180,132 @@ export default function Edit( {
 		() => sanitizeParentAttributes( attributes ),
 		[ attributes ]
 	);
-	const { innerBlocks, postId, selectedVariantKey, storedWinnerEvaluation } =
-		useSelect(
-			( select: any ) => {
-				const editor = select( blockEditorStore );
-				const blocks =
-					( editor.getBlocks( clientId ) as BlockRecord[] ) || [];
-				const postEditor = select( 'core/editor' );
-				const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
-					{} ) as Record< string, unknown >;
-				const nextPostId = Number(
-					postEditor?.getCurrentPostId?.() ??
-						postEditor?.getEditedPostAttribute?.( 'id' ) ??
-						0
-				);
-				const winnerStateMap = meta._ab_test_block_winner_state as
-					| Record< string, unknown >
-					| undefined;
-				const nextSelectedBlockClientId =
-					editor.getSelectedBlockClientId() as string | undefined;
-				let nextSelectedVariantKey: VariantKey | undefined;
+	const {
+		innerBlocks,
+		postId,
+		selectedCtaTarget,
+		selectedVariantKey,
+		storedWinnerEvaluation,
+	} = useSelect(
+		( select: any ) => {
+			const editor = select( blockEditorStore );
+			const blocks =
+				( editor.getBlocks( clientId ) as BlockRecord[] ) || [];
+			const postEditor = select( 'core/editor' );
+			const meta = ( postEditor?.getEditedPostAttribute?.( 'meta' ) ??
+				{} ) as Record< string, unknown >;
+			const nextPostId = Number(
+				postEditor?.getCurrentPostId?.() ??
+					postEditor?.getEditedPostAttribute?.( 'id' ) ??
+					0
+			);
+			const winnerStateMap = meta._ab_test_block_winner_state as
+				| Record< string, unknown >
+				| undefined;
+			const nextSelectedBlockClientId =
+				editor.getSelectedBlockClientId() as string | undefined;
+			let nextSelectedVariantKey: VariantKey | undefined;
+			let nextSelectedCtaTarget: SelectedCtaTarget | undefined;
 
-				for ( const block of blocks ) {
-					const variantKey = block.attributes.variantKey;
+			for ( const block of blocks ) {
+				const variantKey = block.attributes.variantKey;
 
-					if ( ! isVariantKeyValue( variantKey ) ) {
-						continue;
-					}
-
-					if (
-						block.clientId === nextSelectedBlockClientId ||
-						editor.hasSelectedInnerBlock( block.clientId, true )
-					) {
-						nextSelectedVariantKey = variantKey;
-						break;
-					}
+				if ( ! isVariantKeyValue( variantKey ) ) {
+					continue;
 				}
 
-				return {
-					innerBlocks: blocks,
-					postId: Number.isNaN( nextPostId ) ? 0 : nextPostId,
-					selectedVariantKey: nextSelectedVariantKey,
-					storedWinnerEvaluation: sanitizeWinnerSnapshot(
-						winnerStateMap?.[
-							normalizedAttributes.blockInstanceId
-						] as
-							| Partial< AbTestWinnerEvaluationSnapshot >
-							| undefined,
-						normalizedAttributes.variantCount
-					),
-				};
-			},
-			[
-				clientId,
-				normalizedAttributes.blockInstanceId,
-				normalizedAttributes.variantCount,
-			]
-		);
-	const { replaceInnerBlocks, updateBlockAttributes } = useDispatch(
-		blockEditorStore as never
-	) as {
-		replaceInnerBlocks: (
-			rootClientId: string,
-			blocks: BlockRecord[],
-			updateSelection?: boolean
-		) => void;
-		updateBlockAttributes: (
-			targetClientId: string,
-			attributes: Record< string, unknown >
-		) => void;
-	};
+				if (
+					block.clientId === nextSelectedBlockClientId ||
+					editor.hasSelectedInnerBlock( block.clientId, true )
+				) {
+					nextSelectedVariantKey = variantKey;
+					break;
+				}
+			}
+
+			if (
+				nextSelectedBlockClientId &&
+				nextSelectedBlockClientId !== clientId
+			) {
+				const selectedBlock = editor.getBlock(
+					nextSelectedBlockClientId
+				) as BlockRecord | null;
+				const parentClientIds = editor.getBlockParents(
+					nextSelectedBlockClientId
+				) as string[];
+				const belongsToCurrentParent =
+					parentClientIds.includes( clientId );
+				const variantClientId = parentClientIds.find( ( id ) => {
+					const parentBlock = editor.getBlock(
+						id
+					) as BlockRecord | null;
+
+					return parentBlock?.name === 'abtest-block/variant';
+				} );
+
+				if (
+					belongsToCurrentParent &&
+					variantClientId &&
+					selectedBlock &&
+					selectedBlock.name !== 'abtest-block/variant'
+				) {
+					const variantBlock = editor.getBlock(
+						variantClientId
+					) as BlockRecord | null;
+					const variantKey = variantBlock?.attributes.variantKey;
+
+					if ( isVariantKeyValue( variantKey ) ) {
+						nextSelectedCtaTarget = {
+							blockName: selectedBlock.name ?? '',
+							className:
+								typeof selectedBlock.attributes.className ===
+								'string'
+									? selectedBlock.attributes.className
+									: undefined,
+							clientId: nextSelectedBlockClientId,
+							label:
+								typeof selectedBlock.name === 'string'
+									? selectedBlock.name
+									: __( 'Selected block', 'ab-test-block' ),
+							variantClientId,
+							variantKey,
+						};
+					}
+				}
+			}
+
+			return {
+				innerBlocks: blocks,
+				postId: Number.isNaN( nextPostId ) ? 0 : nextPostId,
+				selectedCtaTarget: nextSelectedCtaTarget,
+				selectedVariantKey: nextSelectedVariantKey,
+				storedWinnerEvaluation: sanitizeWinnerSnapshot(
+					winnerStateMap?.[ normalizedAttributes.blockInstanceId ] as
+						| Partial< AbTestWinnerEvaluationSnapshot >
+						| undefined,
+					normalizedAttributes.variantCount
+				),
+			};
+		},
+		[
+			clientId,
+			normalizedAttributes.blockInstanceId,
+			normalizedAttributes.variantCount,
+		]
+	);
+	const { replaceInnerBlocks, selectBlock, updateBlockAttributes } =
+		useDispatch( blockEditorStore as never ) as {
+			replaceInnerBlocks: (
+				rootClientId: string,
+				blocks: unknown[],
+				updateSelection?: boolean
+			) => void;
+			selectBlock: ( clientId: string ) => void;
+			updateBlockAttributes: (
+				targetClientId: string,
+				attributes: Record< string, unknown >
+			) => void;
+		};
 	const { clearUi, setUi } = useDispatch( editorUiStore as never ) as {
 		clearUi: ( parentClientId: string ) => void;
 		setUi: (
@@ -301,6 +374,46 @@ export default function Edit( {
 		previewMode,
 		winnerPreviewState
 	);
+	const trackingPanelCtaTarget = selectedCtaTarget ?? lastSelectedCtaTarget;
+	const selectedCtaBlockType = useMemo(
+		() =>
+			selectedCtaTarget
+				? getBlockType( selectedCtaTarget.blockName )
+				: undefined,
+		[ selectedCtaTarget ]
+	);
+	const trackingPanelCtaBlockType = useMemo(
+		() =>
+			trackingPanelCtaTarget
+				? getBlockType( trackingPanelCtaTarget.blockName )
+				: undefined,
+		[ trackingPanelCtaTarget ]
+	);
+	const canManageSelectedPrimaryCta = Boolean(
+		selectedCtaTarget &&
+			selectedCtaBlockType &&
+			selectedCtaBlockType.supports?.className !== false
+	);
+	const canManageTrackingPanelPrimaryCta = Boolean(
+		trackingPanelCtaTarget &&
+			trackingPanelCtaBlockType &&
+			trackingPanelCtaBlockType.supports?.className !== false
+	);
+	const trackingPanelPrimaryCtaLabel =
+		trackingPanelCtaBlockType?.title?.toString() ??
+		trackingPanelCtaTarget?.label ??
+		__( 'Selected block', 'ab-test-block' );
+	const isSelectedPrimaryCta =
+		canManageSelectedPrimaryCta &&
+		hasClassNameToken( selectedCtaTarget?.className, 'abtest-cta' );
+	const isTrackingPanelPrimaryCta =
+		canManageTrackingPanelPrimaryCta &&
+		hasClassNameToken( trackingPanelCtaTarget?.className, 'abtest-cta' );
+	const currentResolvedWinnerVariantKey =
+		winnerPreviewState.variant &&
+		variantKeys.includes( winnerPreviewState.variant )
+			? winnerPreviewState.variant
+			: undefined;
 	const updateAttribute = useMemo(
 		() =>
 			createExperimentAttributeUpdater(
@@ -427,6 +540,16 @@ export default function Edit( {
 
 	useEffect( () => {
 		setStructureRepairNote( undefined );
+	}, [ clientId, normalizedAttributes.blockInstanceId ] );
+
+	useEffect( () => {
+		if ( selectedCtaTarget ) {
+			setLastSelectedCtaTarget( selectedCtaTarget );
+		}
+	}, [ selectedCtaTarget ] );
+
+	useEffect( () => {
+		setLastSelectedCtaTarget( undefined );
 	}, [ clientId, normalizedAttributes.blockInstanceId ] );
 
 	useEffect( () => {
@@ -729,6 +852,171 @@ export default function Edit( {
 		setCopyExperimentIdStatus( didCopy ? 'copied' : 'error' );
 	}
 
+	function togglePrimaryCta( target: SelectedCtaTarget | undefined ) {
+		if ( ! target ) {
+			return;
+		}
+
+		const variantBlock = innerBlockByVariant.get( target.variantKey );
+
+		if ( ! variantBlock ) {
+			return;
+		}
+
+		const variantInnerBlocks = Array.isArray( variantBlock.innerBlocks )
+			? variantBlock.innerBlocks
+			: [];
+		const managedTargets = collectPrimaryCtaTargets( variantInnerBlocks );
+		const shouldEnable = ! hasClassNameToken(
+			target.className,
+			'abtest-cta'
+		);
+
+		managedTargets.forEach( ( managedTarget ) => {
+			const isTargetBlock = managedTarget.clientId === target.clientId;
+			const nextClassName = toggleClassNameToken(
+				managedTarget.className,
+				'abtest-cta',
+				shouldEnable && isTargetBlock
+			);
+			const currentClassName = managedTarget.className ?? '';
+
+			if ( nextClassName === currentClassName ) {
+				return;
+			}
+
+			updateBlockAttributes( managedTarget.clientId, {
+				className: nextClassName,
+			} );
+		} );
+	}
+
+	function startNewExperiment() {
+		const { nextBlockInstanceId, nextExperimentId, nextPreviewQueryKey } =
+			createFreshExperimentIdentity( normalizedAttributes );
+
+		setPreviewMode( 'traffic' );
+		setLastTrafficVariantKey( activePreviewVariantKey );
+		selectBlock( clientId );
+		setAttributes( {
+			blockInstanceId: nextBlockInstanceId,
+			experimentId: nextExperimentId,
+			manualWinner: undefined,
+			previewQueryKey: nextPreviewQueryKey,
+			winnerMode:
+				normalizedAttributes.winnerMode === 'manual'
+					? 'off'
+					: normalizedAttributes.winnerMode,
+		} );
+	}
+
+	function useCurrentWinnerAsNewBaseline() {
+		if ( ! currentResolvedWinnerVariantKey ) {
+			return;
+		}
+
+		const winnerVariantBlock = innerBlockByVariant.get(
+			currentResolvedWinnerVariantKey
+		);
+
+		if ( ! winnerVariantBlock ) {
+			return;
+		}
+
+		const sourceInnerBlocks = Array.isArray(
+			winnerVariantBlock.innerBlocks
+		)
+			? winnerVariantBlock.innerBlocks
+			: [];
+		variantKeys.forEach( ( variantKey ) => {
+			const targetVariantBlock = innerBlockByVariant.get( variantKey );
+
+			if (
+				! targetVariantBlock ||
+				variantKey === currentResolvedWinnerVariantKey
+			) {
+				return;
+			}
+
+			replaceInnerBlocks(
+				targetVariantBlock.clientId,
+				cloneInnerBlocks( sourceInnerBlocks ) as unknown[],
+				false
+			);
+		} );
+
+		const { nextBlockInstanceId, nextExperimentId, nextPreviewQueryKey } =
+			createFreshExperimentIdentity( normalizedAttributes );
+
+		setPreviewMode( 'traffic' );
+		setLastTrafficVariantKey( currentResolvedWinnerVariantKey );
+		selectBlock( clientId );
+		setAttributes( {
+			blockInstanceId: nextBlockInstanceId,
+			experimentId: nextExperimentId,
+			manualWinner: undefined,
+			previewQueryKey: nextPreviewQueryKey,
+			weights: equalizeWeights( normalizedAttributes.variantCount ),
+			winnerMode: 'off',
+		} );
+	}
+
+	function copyActiveVariantTo( targetVariantKey: VariantKey ) {
+		if ( targetVariantKey === activePreviewVariantKey ) {
+			return;
+		}
+
+		const sourceVariantBlock = innerBlockByVariant.get(
+			activePreviewVariantKey
+		);
+		const targetVariantBlock = innerBlockByVariant.get( targetVariantKey );
+
+		if ( ! sourceVariantBlock || ! targetVariantBlock ) {
+			return;
+		}
+
+		replaceInnerBlocks(
+			targetVariantBlock.clientId,
+			cloneInnerBlocks(
+				sourceVariantBlock.innerBlocks ?? []
+			) as unknown[],
+			false
+		);
+		selectBlock( clientId );
+	}
+
+	function swapPrimaryVariants() {
+		if ( normalizedAttributes.variantCount !== 2 ) {
+			return;
+		}
+
+		const variantABlock = innerBlockByVariant.get( 'a' );
+		const variantBBlock = innerBlockByVariant.get( 'b' );
+
+		if ( ! variantABlock || ! variantBBlock ) {
+			return;
+		}
+
+		const variantABlocks = cloneInnerBlocks(
+			variantABlock.innerBlocks ?? []
+		);
+		const variantBBlocks = cloneInnerBlocks(
+			variantBBlock.innerBlocks ?? []
+		);
+
+		replaceInnerBlocks(
+			variantABlock.clientId,
+			variantBBlocks as unknown[],
+			false
+		);
+		replaceInnerBlocks(
+			variantBBlock.clientId,
+			variantABlocks as unknown[],
+			false
+		);
+		selectBlock( clientId );
+	}
+
 	function openDiagnosticsPanel( onClose?: () => void ) {
 		setIsDiagnosticsPanelOpen( true );
 		onClose?.();
@@ -812,6 +1100,34 @@ export default function Edit( {
 						{ __( 'Assignment', 'ab-test-block' ) }
 					</ToolbarButton>
 				</ToolbarGroup>
+				{ canManageSelectedPrimaryCta && selectedCtaTarget && (
+					<ToolbarGroup>
+						<ToolbarButton
+							isPressed={ isSelectedPrimaryCta }
+							label={ __(
+								'Toggle primary CTA',
+								'ab-test-block'
+							) }
+							aria-label={
+								isSelectedPrimaryCta
+									? __(
+											'Remove primary CTA',
+											'ab-test-block'
+									  )
+									: __(
+											'Mark as primary CTA',
+											'ab-test-block'
+									  )
+							}
+							showTooltip
+							onClick={ () =>
+								togglePrimaryCta( selectedCtaTarget )
+							}
+						>
+							{ __( 'Primary CTA', 'ab-test-block' ) }
+						</ToolbarButton>
+					</ToolbarGroup>
+				) }
 				<ToolbarGroup>
 					<Dropdown
 						className="wp-block-abtest-block-test__toolbar-dropdown"
@@ -881,6 +1197,53 @@ export default function Edit( {
 													'ab-test-block'
 											  ) }
 									</MenuItem>
+								</MenuGroup>
+								<MenuGroup
+									label={ __(
+										'Variant tools',
+										'ab-test-block'
+									) }
+								>
+									{ variantKeys
+										.filter(
+											( variantKey ) =>
+												variantKey !==
+												activePreviewVariantKey
+										)
+										.map( ( variantKey ) => (
+											<MenuItem
+												key={ variantKey }
+												onClick={ () => {
+													copyActiveVariantTo(
+														variantKey
+													);
+													onClose();
+												} }
+											>
+												{ sprintf(
+													/* translators: %s: variant key */
+													__(
+														'Copy active variant to %s',
+														'ab-test-block'
+													),
+													`Variant ${ variantKey.toUpperCase() }`
+												) }
+											</MenuItem>
+										) ) }
+									{ normalizedAttributes.variantCount ===
+										2 && (
+										<MenuItem
+											onClick={ () => {
+												swapPrimaryVariants();
+												onClose();
+											} }
+										>
+											{ __(
+												'Swap A and B',
+												'ab-test-block'
+											) }
+										</MenuItem>
+									) }
 								</MenuGroup>
 								<div className="wp-block-abtest-block-test__toolbar-info">
 									<p className="wp-block-abtest-block-test__toolbar-info-title">
@@ -1146,6 +1509,54 @@ export default function Edit( {
 								)
 							}
 						/>
+					) }
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Experiment lifecycle', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
+					<Notice status="info" isDismissible={ false }>
+						{ __(
+							'Start a fresh experiment without deleting prior stats. The current content stays in place while new IDs begin a new history.',
+							'ab-test-block'
+						) }
+					</Notice>
+					<div className="wp-block-abtest-block-test__field-actions">
+						<Button
+							variant="secondary"
+							onClick={ startNewExperiment }
+						>
+							{ __( 'Start new experiment', 'ab-test-block' ) }
+						</Button>
+						<Button
+							variant="secondary"
+							disabled={ ! currentResolvedWinnerVariantKey }
+							onClick={ useCurrentWinnerAsNewBaseline }
+						>
+							{ __(
+								'Use current winner as new baseline',
+								'ab-test-block'
+							) }
+						</Button>
+					</div>
+					{ currentResolvedWinnerVariantKey ? (
+						<p className="wp-block-abtest-block-test__sidebar-note">
+							{ sprintf(
+								/* translators: %s: variant key */
+								__(
+									'Current resolved winner: Variant %s.',
+									'ab-test-block'
+								),
+								currentResolvedWinnerVariantKey.toUpperCase()
+							) }
+						</p>
+					) : (
+						<p className="wp-block-abtest-block-test__sidebar-note">
+							{ __(
+								'Use current winner as new baseline becomes available after a manual or automatic winner resolves.',
+								'ab-test-block'
+							) }
+						</p>
 					) }
 				</PanelBody>
 				<PanelBody
@@ -1424,10 +1835,38 @@ export default function Edit( {
 					</Notice>
 					<Notice status="info" isDismissible={ false }>
 						{ __(
-							'Clicks record the first primary CTA click per page. Mark a CTA with the Additional CSS class "abtest-cta" or use data-abtest-cta in Custom HTML. Without a marker, links and buttons fall back automatically.',
+							'Clicks record the first primary CTA click per page. Mark a CTA from the editor when a button or link block is selected. Custom HTML can still use data-abtest-cta manually. Without an explicit marker, links and buttons fall back automatically.',
 							'ab-test-block'
 						) }
 					</Notice>
+					<Button
+						variant="secondary"
+						disabled={ ! canManageTrackingPanelPrimaryCta }
+						onClick={ () =>
+							togglePrimaryCta( trackingPanelCtaTarget )
+						}
+					>
+						{ isTrackingPanelPrimaryCta
+							? __( 'Remove primary CTA', 'ab-test-block' )
+							: __( 'Mark as primary CTA', 'ab-test-block' ) }
+					</Button>
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ canManageTrackingPanelPrimaryCta
+							? sprintf(
+									/* translators: 1: block label, 2: variant key */
+									__(
+										'Current selection: %1$s in Variant %2$s.',
+										'ab-test-block'
+									),
+									trackingPanelPrimaryCtaLabel,
+									trackingPanelCtaTarget?.variantKey.toUpperCase() ??
+										'A'
+							  )
+							: __(
+									'Select a button or link block inside a variant to mark it as the primary CTA.',
+									'ab-test-block'
+							  ) }
+					</p>
 					<ToggleControl
 						label={ __( 'Track impressions', 'ab-test-block' ) }
 						checked={ normalizedAttributes.trackImpressions }
@@ -1695,6 +2134,7 @@ function getWinnerPreviewState(
 ): WinnerPreviewState {
 	if ( attributes.winnerMode === 'manual' && attributes.manualWinner ) {
 		return {
+			reasonCode: 'manual',
 			source: 'manual-winner',
 			status: 'manual',
 			variant: attributes.manualWinner,
@@ -1707,6 +2147,7 @@ function getWinnerPreviewState(
 			storedWinnerEvaluation.winner
 		) {
 			return {
+				reasonCode: 'locked',
 				source: 'automatic-winner-locked',
 				status: storedWinnerEvaluation.status,
 				variant: storedWinnerEvaluation.winner,
@@ -1718,6 +2159,7 @@ function getWinnerPreviewState(
 			storedWinnerEvaluation.winner
 		) {
 			return {
+				reasonCode: 'candidate',
 				source: 'automatic-candidate',
 				status: storedWinnerEvaluation.status,
 				variant: storedWinnerEvaluation.winner,
@@ -1725,6 +2167,7 @@ function getWinnerPreviewState(
 		}
 
 		return {
+			reasonCode: storedWinnerEvaluation.reasonCode,
 			source: 'no-winner',
 			status: 'no-winner',
 		};
@@ -1732,12 +2175,14 @@ function getWinnerPreviewState(
 
 	if ( attributes.winnerMode === 'off' ) {
 		return {
+			reasonCode: 'off',
 			source: 'off',
 			status: 'off',
 		};
 	}
 
 	return {
+		reasonCode: 'insufficient-data',
 		source: 'no-winner',
 		status: 'no-winner',
 	};
@@ -1769,19 +2214,10 @@ function getPreviewSummary(
 		);
 	}
 
-	if (
-		winnerPreviewState.source === 'automatic-candidate' ||
-		winnerPreviewState.source === 'automatic-winner-locked'
-	) {
-		return __(
-			'Winner preview is enabled, but automatic resolution is not available until front-end stats are evaluated.',
-			'ab-test-block'
-		);
-	}
-
-	return __(
-		'Winner preview is enabled, but no manual or automatic winner is available yet.',
-		'ab-test-block'
+	return sprintf(
+		/* translators: %s: winner reason summary */
+		__( 'Winner preview is enabled, but %s.', 'ab-test-block' ),
+		getWinnerReasonText( winnerPreviewState.reasonCode ).toLowerCase()
 	);
 }
 
@@ -1811,9 +2247,10 @@ function getAssignmentPreviewText(
 	}
 
 	if ( previewMode === 'winner' ) {
-		return __(
-			'Winner preview is active, but no resolved winner is available.',
-			'ab-test-block'
+		return sprintf(
+			/* translators: %s: winner reason summary */
+			__( 'Winner preview is active. %s.', 'ab-test-block' ),
+			getWinnerReasonText( winnerPreviewState.reasonCode )
 		);
 	}
 
@@ -1834,7 +2271,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Manual -> Variant %s', 'ab-test-block' ),
+			__( 'Manual winner: Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1845,7 +2282,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Winner locked -> Variant %s', 'ab-test-block' ),
+			__( 'Winner locked: Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1856,7 +2293,7 @@ function getWinnerStateText(
 	) {
 		return sprintf(
 			/* translators: %s: variant key */
-			__( 'Candidate -> Variant %s', 'ab-test-block' ),
+			__( 'Automatic winner candidate: Variant %s', 'ab-test-block' ),
 			winnerPreviewState.variant.toUpperCase()
 		);
 	}
@@ -1865,10 +2302,10 @@ function getWinnerStateText(
 		winnerPreviewState.status === 'off' ||
 		attributes.winnerMode === 'off'
 	) {
-		return __( 'Off', 'ab-test-block' );
+		return __( 'Automatic winner is off', 'ab-test-block' );
 	}
 
-	return __( 'No resolved winner yet', 'ab-test-block' );
+	return getWinnerReasonText( winnerPreviewState.reasonCode );
 }
 
 function getAssignmentSourceText(
@@ -1889,7 +2326,7 @@ function getAssignmentSourceText(
 			return __( 'Automatic winner candidate', 'ab-test-block' );
 		}
 
-		return __( 'No resolved winner yet', 'ab-test-block' );
+		return getWinnerReasonText( winnerPreviewState.reasonCode );
 	}
 
 	if ( ! attributes.stickyAssignment ) {
@@ -1901,6 +2338,29 @@ function getAssignmentSourceText(
 	}
 
 	return __( 'Sticky assignment for this block', 'ab-test-block' );
+}
+
+function getWinnerReasonText( reasonCode: WinnerReasonCode ) {
+	switch ( reasonCode ) {
+		case 'off':
+			return __( 'Automatic winner is off', 'ab-test-block' );
+		case 'manual':
+			return __( 'Manual winner is in use', 'ab-test-block' );
+		case 'locked':
+			return __( 'A locked winner is already set', 'ab-test-block' );
+		case 'candidate':
+			return __(
+				'An automatic winner candidate is ready',
+				'ab-test-block'
+			);
+		case 'thresholds-not-met':
+			return __( 'No winner yet: minimum data not met', 'ab-test-block' );
+		case 'tie':
+			return __( 'No winner yet: tied CTR', 'ab-test-block' );
+		case 'insufficient-data':
+		default:
+			return __( 'No winner yet: not enough data', 'ab-test-block' );
+	}
 }
 
 function getStickyBehaviorText( attributes: AbTestExperimentAttributes ) {
@@ -2078,6 +2538,90 @@ function renderStatsCard( title: string, snapshot: AbTestStatsScopeSnapshot ) {
 
 function formatCtrPercentage( value: number ) {
 	return `${ ( value * 100 ).toFixed( 1 ) }%`;
+}
+
+function collectPrimaryCtaTargets( blocks: BlockRecord[] ) {
+	const targets: Array< { className?: string; clientId: string } > = [];
+
+	const visit = ( entries: BlockRecord[] ) => {
+		entries.forEach( ( block ) => {
+			const blockType = block.name
+				? getBlockType( block.name )
+				: undefined;
+
+			if ( blockType && blockType.supports?.className !== false ) {
+				targets.push( {
+					className:
+						typeof block.attributes.className === 'string'
+							? block.attributes.className
+							: undefined,
+					clientId: block.clientId,
+				} );
+			}
+
+			if ( Array.isArray( block.innerBlocks ) ) {
+				visit( block.innerBlocks );
+			}
+		} );
+	};
+
+	visit( blocks );
+
+	return targets;
+}
+
+function hasClassNameToken( className: string | undefined, token: string ) {
+	return (
+		className?.split( /\s+/ ).some( ( item ) => item.trim() === token ) ??
+		false
+	);
+}
+
+function toggleClassNameToken(
+	className: string | undefined,
+	token: string,
+	enabled: boolean
+) {
+	const values = ( className ?? '' )
+		.split( /\s+/ )
+		.map( ( item ) => item.trim() )
+		.filter( Boolean )
+		.filter( ( item ) => item !== token );
+
+	if ( enabled ) {
+		values.push( token );
+	}
+
+	return values.join( ' ' );
+}
+
+function cloneInnerBlocks( blocks: BlockRecord[] ) {
+	if ( blocks.length === 0 ) {
+		return [];
+	}
+
+	return parse(
+		serialize( blocks as Parameters< typeof serialize >[ 0 ] )
+	) as unknown as BlockRecord[];
+}
+
+function createFreshExperimentIdentity(
+	attributes: AbTestExperimentAttributes
+) {
+	const nextBlockInstanceId = generateBlockInstanceId();
+	const nextExperimentId = generateExperimentId( nextBlockInstanceId );
+	const currentDefaultPreviewQueryKey = getDefaultPreviewQueryKey(
+		attributes.experimentId
+	);
+
+	return {
+		nextBlockInstanceId,
+		nextExperimentId,
+		nextPreviewQueryKey:
+			attributes.previewQueryKey === currentDefaultPreviewQueryKey
+				? getDefaultPreviewQueryKey( nextExperimentId )
+				: attributes.previewQueryKey,
+	};
 }
 
 async function copyTextToClipboard( value: string ) {

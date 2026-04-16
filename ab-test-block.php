@@ -357,7 +357,7 @@ function ab_test_block_render_pruned_variant( $inner_blocks, $preferred_variant,
 }
 
 function ab_test_block_format_runtime_label( $experiment_id, $variant_key, $source ) {
-	$source_label = 'weighted traffic split';
+	$source_label = 'traffic split';
 
 	switch ( (string) $source ) {
 		case 'query-preview':
@@ -378,7 +378,7 @@ function ab_test_block_format_runtime_label( $experiment_id, $variant_key, $sour
 	}
 
 	return sprintf(
-		'%1$s: Variant %2$s via %3$s',
+		'%1$s: Variant %2$s (%3$s)',
 		(string) $experiment_id,
 		strtoupper( (string) $variant_key ),
 		$source_label
@@ -447,6 +447,7 @@ function ab_test_block_get_default_winner_state( $window_days = 14 ) {
 		'evaluatedAt' => null,
 		'lockedAt'    => null,
 		'metric'      => 'ctr',
+		'reasonCode'  => 'insufficient-data',
 		'status'      => 'no-winner',
 		'variants'    => array(),
 		'windowDays'  => (int) $window_days,
@@ -504,10 +505,21 @@ function ab_test_block_sanitize_winner_state( $state, $variant_count, $window_da
 		}
 	}
 
+	$reason_code = isset( $state['reasonCode'] ) && in_array(
+		$state['reasonCode'],
+		array( 'off', 'manual', 'locked', 'candidate', 'thresholds-not-met', 'tie', 'insufficient-data' ),
+		true
+	)
+		? (string) $state['reasonCode']
+		: (string) $defaults['reasonCode'];
+
 	return array(
 		'evaluatedAt' => isset( $state['evaluatedAt'] ) ? (int) $state['evaluatedAt'] : $defaults['evaluatedAt'],
 		'lockedAt'    => isset( $state['lockedAt'] ) ? (int) $state['lockedAt'] : $defaults['lockedAt'],
 		'metric'      => 'ctr',
+		'reasonCode'  => $winner
+			? ( 'winner-locked' === $status ? 'locked' : 'candidate' )
+			: $reason_code,
 		'status'      => $winner ? $status : 'no-winner',
 		'variants'    => $variants,
 		'windowDays'  => isset( $state['windowDays'] ) ? max( 1, min( 365, (int) $state['windowDays'] ) ) : $defaults['windowDays'],
@@ -1323,6 +1335,13 @@ function ab_test_block_evaluate_winner( $aggregates, $payload ) {
 			}
 		)
 	);
+	$has_any_data = array_reduce(
+		$aggregates,
+		static function( $carry, $row ) {
+			return $carry || ! empty( $row['impressions'] ) || ! empty( $row['clicks'] );
+		},
+		false
+	);
 
 	usort(
 		$candidates,
@@ -1336,14 +1355,30 @@ function ab_test_block_evaluate_winner( $aggregates, $payload ) {
 	);
 
 	if ( empty( $candidates ) ) {
-		return null;
+		return array(
+			'reasonCode' => $has_any_data ? 'thresholds-not-met' : 'insufficient-data',
+			'winner'     => null,
+		);
 	}
 
 	if ( 1 === count( $candidates ) ) {
-		return $candidates[0]['variant'];
+		return array(
+			'reasonCode' => 'candidate',
+			'winner'     => $candidates[0]['variant'],
+		);
 	}
 
-	return $candidates[0]['ctr'] > $candidates[1]['ctr'] ? $candidates[0]['variant'] : null;
+	if ( $candidates[0]['ctr'] > $candidates[1]['ctr'] ) {
+		return array(
+			'reasonCode' => 'candidate',
+			'winner'     => $candidates[0]['variant'],
+		);
+	}
+
+	return array(
+		'reasonCode' => 'tie',
+		'winner'     => null,
+	);
 }
 
 function ab_test_block_build_record_event_response( $payload, $counted, $stats ) {
@@ -1363,6 +1398,7 @@ function ab_test_block_build_reevaluate_response( $state, $aggregates, $stats ) 
 	$response = array(
 		'evaluatedAt' => (int) ( $state['evaluatedAt'] ?? time() ),
 		'metric'      => 'ctr',
+		'reasonCode'  => (string) ( $state['reasonCode'] ?? 'insufficient-data' ),
 		'status'      => (string) $state['status'],
 		'stats'       => $stats,
 		'variants'    => $aggregates,
@@ -1772,7 +1808,10 @@ function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
 		'evaluatedAt' => $evaluated_at,
 		'lockedAt'    => null,
 		'metric'      => 'ctr',
-		'status'      => $winner
+		'reasonCode'  => ! empty( $winner['winner'] )
+			? ( ! empty( $payload['lockWinnerAfterSelection'] ) ? 'locked' : 'candidate' )
+			: (string) ( $winner['reasonCode'] ?? 'insufficient-data' ),
+		'status'      => ! empty( $winner['winner'] )
 			? ( ! empty( $payload['lockWinnerAfterSelection'] ) ? 'winner-locked' : 'candidate' )
 			: 'no-winner',
 		'variants'    => array_map(
@@ -1787,7 +1826,7 @@ function ab_test_block_handle_reevaluate( WP_REST_Request $request ) {
 			$aggregates
 		),
 		'windowDays'  => (int) $payload['evaluationWindowDays'],
-		'winner'      => $winner,
+		'winner'      => ! empty( $winner['winner'] ) ? $winner['winner'] : null,
 	);
 
 	if ( 'winner-locked' === $next_state['status'] ) {

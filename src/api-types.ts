@@ -7,6 +7,7 @@ import type {
 	AbTestStatsResponse,
 	VariantCount,
 	VariantKey,
+	WinnerReasonCode,
 	WinnerLifecycleState,
 } from './types';
 
@@ -89,6 +90,7 @@ export type AbTestBlockStatsResponse = AbTestStatsResponse;
 export interface AbTestBlockReevaluateResponse {
 	status: WinnerLifecycleState;
 	metric: AutomaticMetric;
+	reasonCode: WinnerReasonCode;
 	winner?: VariantKey;
 	evaluatedAt: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;
 	lockedAt?: number & tags.Minimum< 0 > & tags.Type< 'uint32' >;

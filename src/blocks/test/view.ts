@@ -776,6 +776,7 @@ async function reevaluateWinnerState(
 			evaluatedAt: result.data.evaluatedAt,
 			lockedAt: result.data.lockedAt,
 			metric: result.data.metric,
+			reasonCode: result.data.reasonCode,
 			status: result.data.status,
 			variants: result.data.variants.map( ( aggregate ) => ( {
 				clicks: aggregate.clicks,
