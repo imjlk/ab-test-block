@@ -14,7 +14,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Quick-start starter templates for seeding common experiment layouts
 -   Fresh experiment lifecycle actions for starting a new run or using the current winner as a new baseline
 -   Variant productivity actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
--   Read-only variant comparison summaries plus CTA fallback visibility in the editor
+-   Decision-oriented variant compare cards plus CTA fallback visibility in the editor
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 -   Server stats surfaced back into the editor Diagnostics panel
@@ -50,7 +50,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   The assignment label is hidden by default and can be toggled from the block toolbar or the `Labels & Hints` inspector panel.
 -   The `Variant structure` panel compares every other variant against the active structure and offers one-click sync when they no longer match.
 -   `Quick-start templates` seed every variant with the same starting layout and pre-mark the starter button as the primary CTA.
--   `Compare variants` keeps the active variant as the baseline, shows changed fields only for the other variants, and links directly into edit or structure sync actions.
+-   `Compare variants` keeps the active variant as the baseline, summarizes changed blocks only for the other variants, and links directly into edit or structure sync actions.
 
 ## REST and Diagnostics Surface
 

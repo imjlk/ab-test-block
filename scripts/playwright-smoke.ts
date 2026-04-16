@@ -2073,7 +2073,8 @@ async function runEditorSmoke(
 		await getCompareCards( fallbackCompareSidebar ).nth( 1 ).innerText()
 	);
 	assert(
-		fallbackCompareVariantBText.includes( 'CTA' ) &&
+		fallbackCompareVariantBText.includes( 'CTA differs' ) &&
+			fallbackCompareVariantBText.includes( 'CTA' ) &&
 			fallbackCompareVariantBText.includes( 'No CTA detected yet' ) &&
 			fallbackCompareVariantBText.includes(
 				'Baseline: Fallback CTA: Inserted CTA button'
@@ -2121,7 +2122,8 @@ async function runEditorSmoke(
 		await getCompareCards( explicitCompareSidebar ).nth( 1 ).innerText()
 	);
 	assert(
-		explicitCompareVariantBText.includes( 'CTA' ) &&
+		explicitCompareVariantBText.includes( 'CTA differs' ) &&
+			explicitCompareVariantBText.includes( 'CTA' ) &&
 			explicitCompareVariantBText.includes( 'No CTA detected yet' ) &&
 			explicitCompareVariantBText.includes(
 				'Baseline: Primary CTA: Inserted CTA button'
@@ -2222,14 +2224,18 @@ async function runEditorSmoke(
 	);
 	assert(
 		compareVariantBText.includes( 'CTA' ) &&
+			compareVariantBText.includes( 'CTA differs' ) &&
 			compareVariantBText.includes(
 				'Primary CTA: See one-click checkout'
 			) &&
 			compareVariantBText.includes( 'Weight' ) &&
+			compareVariantBText.includes( 'Weight differs' ) &&
 			compareVariantBText.includes( '33%' ) &&
 			compareVariantBText.includes( 'Structure' ) &&
+			compareVariantBText.includes( 'Structure differs' ) &&
+			compareVariantBText.includes( 'Added from baseline: Heading' ) &&
 			! compareVariantBText.includes( 'Relevance' ),
-		'Expected target compare cards to show only the fields that differ from the active baseline'
+		'Expected target compare cards to show only changed fields plus a compact changed-blocks structure summary'
 	);
 	await compareSidebar
 		.getByRole( 'button', { name: 'Open Variant structure' } )
@@ -2279,7 +2285,10 @@ async function runEditorSmoke(
 		await compareVariantBAfterSync.innerText()
 	);
 	assert(
-		! compareVariantBAfterSyncText.includes( 'Structure' ) &&
+		! compareVariantBAfterSyncText.includes( 'Structure differs' ) &&
+			! compareVariantBAfterSyncText.includes(
+				'Added from baseline: Heading'
+			) &&
 			( await compareVariantBAfterSync
 				.getByRole( 'button', { name: 'Sync structure now' } )
 				.count() ) === 0,
@@ -2706,6 +2715,19 @@ async function runEditorSmoke(
 		.getByRole( 'button', { name: 'Use candidate as manual winner' } )
 		.click();
 	await adminPage.waitForTimeout( 500 );
+	const candidateCompareManualSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const candidateManualCompareText = normalizeWhitespace(
+		await getCompareCards( candidateCompareManualSidebar )
+			.nth( 1 )
+			.innerText()
+	);
+	assert(
+		candidateManualCompareText.includes( 'Manual winner' ),
+		'Expected Compare variants to surface the manual winner badge when the candidate is promoted to a manual winner'
+	);
 	const candidateManualSidebar = await openDiagnosticsPanel( adminPage );
 	const candidateManualText = (
 		await candidateManualSidebar.innerText()
@@ -2719,6 +2741,24 @@ async function runEditorSmoke(
 		.getByRole( 'button', { name: 'Return to automatic winner' } )
 		.click();
 	await adminPage.waitForTimeout( 500 );
+	await adminPage
+		.getByRole( 'button', { name: 'Preview winner mode' } )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	const candidateCompareWinnerSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const candidateWinnerCompareText = normalizeWhitespace(
+		await getCompareCards( candidateCompareWinnerSidebar )
+			.nth( 1 )
+			.innerText()
+	);
+	assert(
+		candidateWinnerCompareText.includes( 'Automatic candidate' ) &&
+			candidateWinnerCompareText.includes( 'Shown in winner preview' ),
+		'Expected Compare variants to surface candidate and winner-preview decision badges for the active winner-preview target'
+	);
 	const candidateAutomaticSidebar = await openDiagnosticsPanel( adminPage );
 	const candidateAutomaticText = (
 		await candidateAutomaticSidebar.innerText()

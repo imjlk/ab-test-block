@@ -386,6 +386,12 @@
 		line-height: 1.35;
 	}
 
+	&__compare-shortcut.components-button {
+		margin-top: 6px;
+		min-height: 30px;
+		padding-inline: 10px;
+	}
+
 	&__compare-title {
 		margin: 0;
 		font-size: 13px;

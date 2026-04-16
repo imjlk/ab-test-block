@@ -152,7 +152,7 @@ type VariantCompareField = {
 };
 
 type VariantCompareCard = {
-	changeLabels: string[];
+	badges: string[];
 	fields: VariantCompareField[];
 	isBaseline: boolean;
 	matchesBaseline: boolean;
@@ -2225,6 +2225,7 @@ export default function Edit( {
 						<Notice status="warning" isDismissible={ false }>
 							<p>{ variantStructureSummaryText }</p>
 							<Button
+								className="wp-block-abtest-block-test__compare-shortcut"
 								variant="secondary"
 								onClick={ () => openVariantStructurePanel() }
 							>
@@ -2249,18 +2250,16 @@ export default function Edit( {
 											card.variantKey.toUpperCase()
 										) }
 									</h4>
-									{ card.changeLabels.length > 0 && (
+									{ card.badges.length > 0 && (
 										<div className="wp-block-abtest-block-test__compare-badges">
-											{ card.changeLabels.map(
-												( label ) => (
-													<span
-														key={ label }
-														className="wp-block-abtest-block-test__compare-badge"
-													>
-														{ label }
-													</span>
-												)
-											) }
+											{ card.badges.map( ( label ) => (
+												<span
+													key={ label }
+													className="wp-block-abtest-block-test__compare-badge"
+												>
+													{ label }
+												</span>
+											) ) }
 										</div>
 									) }
 								</div>
@@ -3671,7 +3670,7 @@ function getVariantCompareCards(
 			}
 
 			cards.push( {
-				changeLabels: [],
+				badges: [],
 				fields,
 				isBaseline: true,
 				matchesBaseline: true,
@@ -3687,7 +3686,7 @@ function getVariantCompareCards(
 		);
 
 		cards.push( {
-			changeLabels: fields.map( ( field ) => field.label ),
+			badges: getVariantCompareCardBadges( fields, summary ),
 			fields,
 			isBaseline: false,
 			matchesBaseline: fields.length === 0,
@@ -3713,10 +3712,13 @@ function getChangedVariantCompareFields(
 
 	if ( structureDiffers ) {
 		fields.push( {
-			baselineText: baselineSummary.structureSummary.join( ' / ' ),
 			key: 'structure',
 			label: __( 'Structure', 'ab-test-block' ),
-			listValues: summary.structureSummary,
+			listValues: getChangedStructureSummaryLines(
+				baselineSummary.structureSummary,
+				summary.structureSummary,
+				summary.variantKey
+			),
 		} );
 	}
 
@@ -3765,6 +3767,186 @@ function getChangedVariantCompareFields(
 	}
 
 	return fields;
+}
+
+function getVariantCompareCardBadges(
+	fields: VariantCompareField[],
+	summary: VariantCompareSummary
+) {
+	const badges: string[] = [];
+
+	if ( fields.some( ( field ) => field.key === 'structure' ) ) {
+		badges.push( __( 'Structure differs', 'ab-test-block' ) );
+	}
+
+	if ( fields.some( ( field ) => field.key === 'cta' ) ) {
+		badges.push( __( 'CTA differs', 'ab-test-block' ) );
+	}
+
+	if ( fields.some( ( field ) => field.key === 'weight' ) ) {
+		badges.push( __( 'Weight differs', 'ab-test-block' ) );
+	}
+
+	summary.relevanceBadges.forEach( ( badge ) => {
+		if ( ! badges.includes( badge ) ) {
+			badges.push( badge );
+		}
+	} );
+
+	return badges;
+}
+
+function getChangedStructureSummaryLines(
+	baselineLines: string[],
+	targetLines: string[],
+	targetVariantKey: VariantKey
+) {
+	const summaryLines: string[] = [];
+	const baselineTopLevelLabels = baselineLines.map(
+		getTopLevelStructureLabel
+	);
+	const targetTopLevelLabels = targetLines.map( getTopLevelStructureLabel );
+	const missingLabels = subtractStructureLabels(
+		baselineTopLevelLabels,
+		targetTopLevelLabels
+	);
+	const extraLabels = subtractStructureLabels(
+		targetTopLevelLabels,
+		baselineTopLevelLabels
+	);
+
+	if ( missingLabels.length > 0 ) {
+		summaryLines.push(
+			sprintf(
+				/* translators: %s: missing baseline block labels */
+				__( 'Added from baseline: %s', 'ab-test-block' ),
+				formatStructureLabelList( missingLabels )
+			)
+		);
+	}
+
+	if ( extraLabels.length > 0 ) {
+		summaryLines.push(
+			sprintf(
+				/* translators: 1: target variant key, 2: extra block labels */
+				__( 'Only in Variant %1$s: %2$s', 'ab-test-block' ),
+				targetVariantKey.toUpperCase(),
+				formatStructureLabelList( extraLabels )
+			)
+		);
+	}
+
+	if (
+		baselineTopLevelLabels.length === targetTopLevelLabels.length &&
+		areMatchingStructureLabels(
+			baselineTopLevelLabels,
+			targetTopLevelLabels
+		) &&
+		! areStringArraysEqual( baselineTopLevelLabels, targetTopLevelLabels )
+	) {
+		summaryLines.push(
+			sprintf(
+				/* translators: %s: desired order summary */
+				__( 'Order differs: %s', 'ab-test-block' ),
+				formatStructureOrderSummary( baselineTopLevelLabels )
+			)
+		);
+	}
+
+	const nestedMismatchLines = getNestedStructureMismatchLines(
+		baselineLines,
+		targetLines
+	);
+
+	summaryLines.push( ...nestedMismatchLines );
+
+	return summaryLines.length > 0
+		? summaryLines.slice( 0, 3 )
+		: [
+				__(
+					'Structure differs from the active baseline.',
+					'ab-test-block'
+				),
+		  ];
+}
+
+function getTopLevelStructureLabel( summaryLine: string ) {
+	return summaryLine.split( ' > ' )[ 0 ]?.trim() ?? summaryLine.trim();
+}
+
+function getNestedStructureLabel( summaryLine: string ) {
+	return summaryLine.includes( ' > ' )
+		? summaryLine.split( ' > ' ).slice( 1 ).join( ' > ' ).trim()
+		: '';
+}
+
+function subtractStructureLabels( left: string[], right: string[] ) {
+	const remaining = [ ...right ];
+
+	return left.filter( ( label ) => {
+		const matchIndex = remaining.findIndex(
+			( candidate ) => candidate === label
+		);
+
+		if ( matchIndex >= 0 ) {
+			remaining.splice( matchIndex, 1 );
+			return false;
+		}
+
+		return true;
+	} );
+}
+
+function areMatchingStructureLabels( left: string[], right: string[] ) {
+	return areStringArraysEqual( [ ...left ].sort(), [ ...right ].sort() );
+}
+
+function getNestedStructureMismatchLines(
+	baselineLines: string[],
+	targetLines: string[]
+) {
+	const lines: string[] = [];
+	const sharedLength = Math.min( baselineLines.length, targetLines.length );
+
+	for ( let index = 0; index < sharedLength; index += 1 ) {
+		const baselineLabel = getTopLevelStructureLabel(
+			baselineLines[ index ]
+		);
+		const targetLabel = getTopLevelStructureLabel( targetLines[ index ] );
+
+		if ( baselineLabel !== targetLabel ) {
+			continue;
+		}
+
+		const baselineNested = getNestedStructureLabel(
+			baselineLines[ index ]
+		);
+		const targetNested = getNestedStructureLabel( targetLines[ index ] );
+
+		if ( baselineNested === targetNested ) {
+			continue;
+		}
+
+		lines.push(
+			sprintf(
+				/* translators: 1: block label, 2: nested summary */
+				__( 'Nested structure differs in %1$s: %2$s', 'ab-test-block' ),
+				baselineLabel,
+				baselineNested ||
+					__( 'No nested baseline blocks', 'ab-test-block' )
+			)
+		);
+	}
+
+	return lines.slice( 0, 1 );
+}
+
+function formatStructureLabelList( labels: string[] ) {
+	return labels.slice( 0, 3 ).join( ', ' );
+}
+
+function formatStructureOrderSummary( labels: string[] ) {
+	return labels.slice( 0, 3 ).join( ' before ' );
 }
 
 function summarizeBlockStructure( blocks: BlockRecord[] ) {
