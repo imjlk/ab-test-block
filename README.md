@@ -50,7 +50,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   The assignment label is hidden by default and can be toggled from the block toolbar or the `Labels & Hints` inspector panel.
 -   The `Variant structure` panel compares every other variant against the active structure and offers one-click sync when they no longer match.
 -   `Quick-start templates` seed every variant with the same starting layout and pre-mark the starter button as the primary CTA.
--   `Compare variants` summarizes structure, CTA text, weight, and current preview or winner relevance without switching canvases.
+-   `Compare variants` keeps the active variant as the baseline, shows changed fields only for the other variants, and links directly into edit or structure sync actions.
 
 ## REST and Diagnostics Surface
 

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type Locator, type Page } from 'playwright';
 
 type SmokeMode = 'core' | 'editor' | 'full';
 type FrontRenderMode = 'css-hide' | 'dom-prune';
@@ -32,6 +32,12 @@ function writeWarning( value: string ) {
 
 function escapeRegExp( value: string ) {
 	return value.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
+}
+
+function normalizeWhitespace( value: string | null | undefined ) {
+	return String( value ?? '' )
+		.replace( /\s+/g, ' ' )
+		.trim();
 }
 
 function assert( condition: unknown, message: string ): asserts condition {
@@ -650,6 +656,10 @@ async function openSidebarPanel( page: Page, title: string ) {
 	await page.waitForTimeout( 1000 );
 
 	return sidebar;
+}
+
+function getCompareCards( sidebar: Locator ) {
+	return sidebar.locator( '.wp-block-abtest-block-test__compare-card' );
 }
 
 async function openDiagnosticsPanel( page: Page ) {
@@ -1946,6 +1956,28 @@ async function runEditorSmoke(
 	);
 
 	await selectParentBlock( adminPage, 'e2einstats1' );
+	const statsCompareSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const statsCompareSidebarText = normalizeWhitespace(
+		await statsCompareSidebar.innerText()
+	);
+	const statsCompareCards = getCompareCards( statsCompareSidebar );
+	assert(
+		statsCompareSidebarText.includes(
+			'All compared variants match the active baseline.'
+		),
+		'Expected Compare variants to show a compact match state when the target variant matches the active baseline'
+	);
+	assert(
+		normalizeWhitespace(
+			await statsCompareCards.nth( 1 ).innerText()
+		).includes( 'Matches active baseline' ),
+		'Expected Compare variants to collapse matching variants into a one-line match state'
+	);
+
+	await selectParentBlock( adminPage, 'e2einstats1' );
 	await insertButtonIntoVariant(
 		adminPage,
 		'e2einstats1',
@@ -2032,7 +2064,27 @@ async function runEditorSmoke(
 		).trim() === 'Variant A CTA: Fallback tracking is active',
 		'Expected the editor canvas to show a compact fallback CTA badge for the active variant'
 	);
-	await trackingSidebarFallback
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	const fallbackCompareSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const fallbackCompareVariantBText = normalizeWhitespace(
+		await getCompareCards( fallbackCompareSidebar ).nth( 1 ).innerText()
+	);
+	assert(
+		fallbackCompareVariantBText.includes( 'CTA' ) &&
+			fallbackCompareVariantBText.includes( 'No CTA detected yet' ) &&
+			fallbackCompareVariantBText.includes(
+				'Baseline: Fallback CTA: Inserted CTA button'
+			),
+		'Expected Compare variants to show the fallback CTA state only when it differs from the active baseline'
+	);
+	const restoreTrackingSidebar = await openSidebarPanel(
+		adminPage,
+		'Tracking'
+	);
+	await restoreTrackingSidebar
 		.getByRole( 'button', { name: 'Mark as primary CTA' } )
 		.click();
 	await adminPage.waitForTimeout( 400 );
@@ -2059,6 +2111,22 @@ async function runEditorSmoke(
 				.textContent() ) ?? ''
 		).trim() === 'Variant A CTA: Primary CTA selected',
 		'Expected the editor canvas CTA badge to update after restoring an explicit primary CTA'
+	);
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	const explicitCompareSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const explicitCompareVariantBText = normalizeWhitespace(
+		await getCompareCards( explicitCompareSidebar ).nth( 1 ).innerText()
+	);
+	assert(
+		explicitCompareVariantBText.includes( 'CTA' ) &&
+			explicitCompareVariantBText.includes( 'No CTA detected yet' ) &&
+			explicitCompareVariantBText.includes(
+				'Baseline: Primary CTA: Inserted CTA button'
+			),
+		'Expected Compare variants to update the CTA comparison when the active baseline switches from fallback tracking to an explicit primary CTA'
 	);
 
 	await openEditor( adminPage, templatePostId );
@@ -2120,23 +2188,48 @@ async function runEditorSmoke(
 		adminPage,
 		'Compare variants'
 	);
-	const compareSidebarText = ( await compareSidebar.innerText() ).replace(
-		/\s+/g,
-		' '
+	const compareSidebarText = normalizeWhitespace(
+		await compareSidebar.innerText()
+	);
+	const compareCards = getCompareCards( compareSidebar );
+	assert(
+		compareSidebarText.includes(
+			'Comparing every variant against the active structure in Variant A.'
+		),
+		'Expected Compare variants to describe the active baseline before listing changed fields'
+	);
+	assert(
+		normalizeWhitespace( await compareCards.nth( 0 ).innerText() ).includes(
+			'Active baseline'
+		) &&
+			normalizeWhitespace(
+				await compareCards.nth( 0 ).innerText()
+			).includes( 'Primary CTA: Explore free shipping' ) &&
+			normalizeWhitespace(
+				await compareCards.nth( 0 ).innerText()
+			).includes( '34%' ),
+		'Expected the baseline compare card to keep the active variant summary pinned at the top of the compare view'
+	);
+	const compareVariantBText = normalizeWhitespace(
+		await compareCards.nth( 1 ).innerText()
 	);
 	assert(
 		compareSidebarText.includes( 'Variant A' ) &&
 			compareSidebarText.includes(
-				'Primary CTA: Explore free shipping'
-			) &&
-			compareSidebarText.includes( 'Active in traffic mode' ),
-		'Expected Compare variants to summarize CTA text and active preview relevance for the visible variant'
+				'Variants B and C differ from Variant A.'
+			),
+		'Expected Compare variants to surface the active-structure mismatch summary when one variant drifts'
 	);
 	assert(
-		compareSidebarText.includes(
-			'Variants B and C differ from Variant A.'
-		),
-		'Expected Compare variants to surface a structure mismatch summary when one variant drifts'
+		compareVariantBText.includes( 'CTA' ) &&
+			compareVariantBText.includes(
+				'Primary CTA: See one-click checkout'
+			) &&
+			compareVariantBText.includes( 'Weight' ) &&
+			compareVariantBText.includes( '33%' ) &&
+			compareVariantBText.includes( 'Structure' ) &&
+			! compareVariantBText.includes( 'Relevance' ),
+		'Expected target compare cards to show only the fields that differ from the active baseline'
 	);
 	await compareSidebar
 		.getByRole( 'button', { name: 'Open Variant structure' } )
@@ -2148,6 +2241,49 @@ async function runEditorSmoke(
 			.getByText( 'Sync structure from active variant' )
 			.count() ) === 1,
 		'Expected Compare variants to link directly into the Variant structure sync controls when structures differ'
+	);
+	await selectParentBlock( adminPage, 'e2etemplate1' );
+	const compareSidebarBeforeEdit = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	await getCompareCards( compareSidebarBeforeEdit )
+		.nth( 1 )
+		.getByRole( 'button', { name: 'Edit Variant B' } )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		( await getVisibleVariantCanvasText( templateFrame ) ).includes(
+			'Checkout in one fast step'
+		),
+		'Expected Edit Variant B from Compare variants to jump straight into the requested variant canvas'
+	);
+	await selectParentBlock( adminPage, 'e2etemplate1' );
+	const compareSidebarAfterEdit = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	await getCompareCards( compareSidebarAfterEdit )
+		.nth( 1 )
+		.getByRole( 'button', { name: 'Sync structure now' } )
+		.click();
+	await adminPage.waitForTimeout( 500 );
+	const compareSidebarAfterSync = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const compareVariantBAfterSync = getCompareCards(
+		compareSidebarAfterSync
+	).nth( 1 );
+	const compareVariantBAfterSyncText = normalizeWhitespace(
+		await compareVariantBAfterSync.innerText()
+	);
+	assert(
+		! compareVariantBAfterSyncText.includes( 'Structure' ) &&
+			( await compareVariantBAfterSync
+				.getByRole( 'button', { name: 'Sync structure now' } )
+				.count() ) === 0,
+		'Expected Sync structure now from Compare variants to clear the structure-only change row once the target variant is aligned'
 	);
 
 	await openEditor( adminPage, lifecyclePostId );

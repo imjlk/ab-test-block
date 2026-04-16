@@ -140,9 +140,28 @@ type StarterTemplateOption = {
 	label: string;
 };
 
+type VariantCompareFieldKey = 'cta' | 'relevance' | 'structure' | 'weight';
+
+type VariantCompareField = {
+	badges?: string[];
+	baselineText?: string;
+	key: VariantCompareFieldKey;
+	label: string;
+	listValues?: string[];
+	valueText?: string;
+};
+
+type VariantCompareCard = {
+	changeLabels: string[];
+	fields: VariantCompareField[];
+	isBaseline: boolean;
+	matchesBaseline: boolean;
+	variantKey: VariantKey;
+};
+
 type VariantCompareSummary = {
 	ctaText: string;
-	relevanceText: string;
+	relevanceBadges: string[];
 	structureSummary: string[];
 	variantKey: VariantKey;
 	weightText: string;
@@ -613,29 +632,50 @@ export default function Edit( {
 			),
 		[ innerBlockByVariant, variantKeys ]
 	);
-	const compareVariantSummaries = useMemo(
+	const compareVariantSummaryByKey = useMemo(
 		() =>
-			variantKeys.map( ( variantKey ) =>
-				getVariantCompareSummary( {
-					activePreviewVariantKey,
-					attributes: normalizedAttributes,
-					previewMode,
-					blocks:
-						innerBlockByVariant.get( variantKey )?.innerBlocks ??
-						[],
+			new Map< VariantKey, VariantCompareSummary >(
+				variantKeys.map( ( variantKey ) => [
 					variantKey,
-					winnerPreviewState,
-				} )
+					getVariantCompareSummary( {
+						attributes: normalizedAttributes,
+						baselineVariantKey: structureSourceVariantKey,
+						blocks:
+							innerBlockByVariant.get( variantKey )
+								?.innerBlocks ?? [],
+						previewMode,
+						variantKey,
+						winnerPreviewState,
+					} ),
+				] )
 			),
 		[
-			activePreviewVariantKey,
 			innerBlockByVariant,
 			normalizedAttributes,
 			previewMode,
+			structureSourceVariantKey,
 			variantKeys,
 			winnerPreviewState,
 		]
 	);
+	const compareVariantCards = useMemo(
+		() =>
+			getVariantCompareCards(
+				structureSourceVariantKey,
+				variantKeys,
+				compareVariantSummaryByKey,
+				variantStructureStatuses
+			),
+		[
+			compareVariantSummaryByKey,
+			structureSourceVariantKey,
+			variantKeys,
+			variantStructureStatuses,
+		]
+	);
+	const allComparedVariantsMatch = compareVariantCards
+		.filter( ( card ) => ! card.isBaseline )
+		.every( ( card ) => card.matchesBaseline );
 	const activeVariantCtaAnalysis = useMemo(
 		() =>
 			analyzeVariantCta(
@@ -2173,6 +2213,14 @@ export default function Edit( {
 							structureSourceVariantKey.toUpperCase()
 						) }
 					</p>
+					{ allComparedVariantsMatch && (
+						<Notice status="info" isDismissible={ false }>
+							{ __(
+								'All compared variants match the active baseline.',
+								'ab-test-block'
+							) }
+						</Notice>
+					) }
 					{ hasVariantStructureDrift && (
 						<Notice status="warning" isDismissible={ false }>
 							<p>{ variantStructureSummaryText }</p>
@@ -2188,60 +2236,148 @@ export default function Edit( {
 						</Notice>
 					) }
 					<div className="wp-block-abtest-block-test__compare-grid">
-						{ compareVariantSummaries.map( ( summary ) => (
+						{ compareVariantCards.map( ( card ) => (
 							<div
-								key={ summary.variantKey }
+								key={ card.variantKey }
 								className="wp-block-abtest-block-test__compare-card"
 							>
-								<h4 className="wp-block-abtest-block-test__compare-title">
-									{ sprintf(
-										/* translators: %s: variant key */
-										__( 'Variant %s', 'ab-test-block' ),
-										summary.variantKey.toUpperCase()
+								<div className="wp-block-abtest-block-test__compare-head">
+									<h4 className="wp-block-abtest-block-test__compare-title">
+										{ sprintf(
+											/* translators: %s: variant key */
+											__( 'Variant %s', 'ab-test-block' ),
+											card.variantKey.toUpperCase()
+										) }
+									</h4>
+									{ card.changeLabels.length > 0 && (
+										<div className="wp-block-abtest-block-test__compare-badges">
+											{ card.changeLabels.map(
+												( label ) => (
+													<span
+														key={ label }
+														className="wp-block-abtest-block-test__compare-badge"
+													>
+														{ label }
+													</span>
+												)
+											) }
+										</div>
 									) }
-								</h4>
-								<dl className="wp-block-abtest-block-test__debug-summary">
-									<div>
-										<dt>
-											{ __(
-												'Structure',
-												'ab-test-block'
+								</div>
+								{ card.matchesBaseline ? (
+									<p className="wp-block-abtest-block-test__compare-status">
+										{ card.isBaseline
+											? __(
+													'Active baseline',
+													'ab-test-block'
+											  )
+											: __(
+													'Matches active baseline',
+													'ab-test-block'
+											  ) }
+									</p>
+								) : null }
+								{ card.fields.length > 0 && (
+									<dl className="wp-block-abtest-block-test__debug-summary">
+										{ card.fields.map( ( field ) => (
+											<div key={ field.key }>
+												<dt>{ field.label }</dt>
+												<dd>
+													{ Array.isArray(
+														field.badges
+													) &&
+													field.badges.length > 0 ? (
+														<div className="wp-block-abtest-block-test__compare-badges">
+															{ field.badges.map(
+																( badge ) => (
+																	<span
+																		key={
+																			badge
+																		}
+																		className="wp-block-abtest-block-test__compare-badge"
+																	>
+																		{
+																			badge
+																		}
+																	</span>
+																)
+															) }
+														</div>
+													) : null }
+													{ field.valueText ? (
+														<p className="wp-block-abtest-block-test__compare-value">
+															{ field.valueText }
+														</p>
+													) : null }
+													{ field.listValues ? (
+														<ul className="wp-block-abtest-block-test__compare-list">
+															{ field.listValues.map(
+																( line ) => (
+																	<li
+																		key={
+																			line
+																		}
+																	>
+																		{ line }
+																	</li>
+																)
+															) }
+														</ul>
+													) : null }
+													{ field.baselineText ? (
+														<p className="wp-block-abtest-block-test__compare-baseline">
+															{ sprintf(
+																/* translators: %s: baseline field summary */
+																__(
+																	'Baseline: %s',
+																	'ab-test-block'
+																),
+																field.baselineText
+															) }
+														</p>
+													) : null }
+												</dd>
+											</div>
+										) ) }
+									</dl>
+								) }
+								{ ! card.isBaseline && (
+									<div className="wp-block-abtest-block-test__compare-actions">
+										<Button
+											variant="secondary"
+											onClick={ () =>
+												activateVariantEditor(
+													card.variantKey
+												)
+											}
+										>
+											{ sprintf(
+												/* translators: %s: variant key */
+												__(
+													'Edit Variant %s',
+													'ab-test-block'
+												),
+												card.variantKey.toUpperCase()
 											) }
-										</dt>
-										<dd>
-											<ul className="wp-block-abtest-block-test__compare-list">
-												{ summary.structureSummary.map(
-													( line ) => (
-														<li key={ line }>
-															{ line }
-														</li>
-													)
+										</Button>
+										{ card.fields.some(
+											( field ) =>
+												field.key === 'structure'
+										) && (
+											<Button
+												variant="secondary"
+												onClick={
+													syncStructureFromActiveVariant
+												}
+											>
+												{ __(
+													'Sync structure now',
+													'ab-test-block'
 												) }
-											</ul>
-										</dd>
+											</Button>
+										) }
 									</div>
-									<div>
-										<dt>
-											{ __( 'CTA', 'ab-test-block' ) }
-										</dt>
-										<dd>{ summary.ctaText }</dd>
-									</div>
-									<div>
-										<dt>
-											{ __( 'Weight', 'ab-test-block' ) }
-										</dt>
-										<dd>{ summary.weightText }</dd>
-									</div>
-									<div>
-										<dt>
-											{ __(
-												'Relevance',
-												'ab-test-block'
-											) }
-										</dt>
-										<dd>{ summary.relevanceText }</dd>
-									</div>
-								</dl>
+								) }
 							</div>
 						) ) }
 					</div>
@@ -3448,15 +3584,15 @@ function isStarterTemplateSeedState( blocks: BlockRecord[] ) {
 }
 
 function getVariantCompareSummary( {
-	activePreviewVariantKey,
 	attributes,
+	baselineVariantKey,
 	blocks,
 	previewMode,
 	variantKey,
 	winnerPreviewState,
 }: {
-	activePreviewVariantKey: VariantKey;
 	attributes: AbTestExperimentAttributes;
+	baselineVariantKey: VariantKey;
 	blocks: BlockRecord[];
 	previewMode: EditorPreviewMode;
 	variantKey: VariantKey;
@@ -3466,8 +3602,8 @@ function getVariantCompareSummary( {
 
 	return {
 		ctaText: getVariantCompareCtaText( ctaAnalysis ),
-		relevanceText: getVariantCompareRelevanceText(
-			activePreviewVariantKey,
+		relevanceBadges: getVariantCompareRelevanceBadges(
+			baselineVariantKey,
 			attributes,
 			previewMode,
 			variantKey,
@@ -3477,6 +3613,158 @@ function getVariantCompareSummary( {
 		variantKey,
 		weightText: `${ String( attributes.weights[ variantKey ] ?? 0 ) }%`,
 	};
+}
+
+function getVariantCompareCards(
+	baselineVariantKey: VariantKey,
+	variantKeys: VariantKey[],
+	compareSummaryByKey: Map< VariantKey, VariantCompareSummary >,
+	variantStructureStatuses: VariantStructureStatus[]
+): VariantCompareCard[] {
+	const baselineSummary = compareSummaryByKey.get( baselineVariantKey );
+	const structureStatusByKey = new Map(
+		variantStructureStatuses.map( ( status ) => [
+			status.variantKey,
+			status,
+		] )
+	);
+	const orderedVariantKeys = [
+		baselineVariantKey,
+		...variantKeys.filter(
+			( variantKey ) => variantKey !== baselineVariantKey
+		),
+	];
+	const cards: VariantCompareCard[] = [];
+
+	orderedVariantKeys.forEach( ( variantKey ) => {
+		const summary = compareSummaryByKey.get( variantKey );
+
+		if ( ! summary || ! baselineSummary ) {
+			return;
+		}
+
+		if ( variantKey === baselineVariantKey ) {
+			const fields: VariantCompareField[] = [
+				{
+					key: 'structure',
+					label: __( 'Structure', 'ab-test-block' ),
+					listValues: summary.structureSummary,
+				},
+				{
+					key: 'cta',
+					label: __( 'CTA', 'ab-test-block' ),
+					valueText: summary.ctaText,
+				},
+				{
+					key: 'weight',
+					label: __( 'Weight', 'ab-test-block' ),
+					valueText: summary.weightText,
+				},
+			];
+
+			if ( summary.relevanceBadges.length > 0 ) {
+				fields.push( {
+					badges: summary.relevanceBadges,
+					key: 'relevance',
+					label: __( 'Relevance', 'ab-test-block' ),
+				} );
+			}
+
+			cards.push( {
+				changeLabels: [],
+				fields,
+				isBaseline: true,
+				matchesBaseline: true,
+				variantKey,
+			} );
+			return;
+		}
+
+		const fields = getChangedVariantCompareFields(
+			summary,
+			baselineSummary,
+			structureStatusByKey.get( variantKey )
+		);
+
+		cards.push( {
+			changeLabels: fields.map( ( field ) => field.label ),
+			fields,
+			isBaseline: false,
+			matchesBaseline: fields.length === 0,
+			variantKey,
+		} );
+	} );
+
+	return cards;
+}
+
+function getChangedVariantCompareFields(
+	summary: VariantCompareSummary,
+	baselineSummary: VariantCompareSummary,
+	structureStatus: VariantStructureStatus | undefined
+) {
+	const fields: VariantCompareField[] = [];
+	const structureDiffers =
+		structureStatus?.matches === false ||
+		! areStringArraysEqual(
+			summary.structureSummary,
+			baselineSummary.structureSummary
+		);
+
+	if ( structureDiffers ) {
+		fields.push( {
+			baselineText: baselineSummary.structureSummary.join( ' / ' ),
+			key: 'structure',
+			label: __( 'Structure', 'ab-test-block' ),
+			listValues: summary.structureSummary,
+		} );
+	}
+
+	if ( summary.ctaText !== baselineSummary.ctaText ) {
+		fields.push( {
+			baselineText: baselineSummary.ctaText,
+			key: 'cta',
+			label: __( 'CTA', 'ab-test-block' ),
+			valueText: summary.ctaText,
+		} );
+	}
+
+	if ( summary.weightText !== baselineSummary.weightText ) {
+		fields.push( {
+			baselineText: baselineSummary.weightText,
+			key: 'weight',
+			label: __( 'Weight', 'ab-test-block' ),
+			valueText: summary.weightText,
+		} );
+	}
+
+	if (
+		! areStringArraysEqual(
+			summary.relevanceBadges,
+			baselineSummary.relevanceBadges
+		) &&
+		( summary.relevanceBadges.length > 0 ||
+			baselineSummary.relevanceBadges.length > 0 )
+	) {
+		fields.push( {
+			badges:
+				summary.relevanceBadges.length > 0
+					? summary.relevanceBadges
+					: undefined,
+			baselineText:
+				baselineSummary.relevanceBadges.length > 0
+					? baselineSummary.relevanceBadges.join( ' · ' )
+					: __( 'No special state', 'ab-test-block' ),
+			key: 'relevance',
+			label: __( 'Relevance', 'ab-test-block' ),
+			valueText:
+				summary.relevanceBadges.length === 0
+					? __( 'No special state', 'ab-test-block' )
+					: undefined,
+		} );
+	}
+
+	return fields;
 }
 
 function summarizeBlockStructure( blocks: BlockRecord[] ) {
@@ -3656,18 +3944,14 @@ function getVariantCompareCtaText( analysis: VariantCtaAnalysis ) {
 	return __( 'No CTA detected yet', 'ab-test-block' );
 }
 
-function getVariantCompareRelevanceText(
-	activePreviewVariantKey: VariantKey,
+function getVariantCompareRelevanceBadges(
+	baselineVariantKey: VariantKey,
 	attributes: AbTestExperimentAttributes,
 	previewMode: EditorPreviewMode,
 	variantKey: VariantKey,
 	winnerPreviewState: WinnerPreviewState
 ) {
 	const tags: string[] = [];
-
-	if ( previewMode === 'traffic' && variantKey === activePreviewVariantKey ) {
-		tags.push( __( 'Active in traffic mode', 'ab-test-block' ) );
-	}
 
 	if (
 		previewMode === 'winner' &&
@@ -3698,7 +3982,23 @@ function getVariantCompareRelevanceText(
 		tags.push( __( 'Locked winner', 'ab-test-block' ) );
 	}
 
-	return tags.join( ' · ' ) || __( 'No special state', 'ab-test-block' );
+	if (
+		previewMode === 'traffic' &&
+		variantKey === baselineVariantKey &&
+		tags.length === 0
+	) {
+		return [];
+	}
+
+	return tags;
+}
+
+function areStringArraysEqual( left: string[], right: string[] ) {
+	if ( left.length !== right.length ) {
+		return false;
+	}
+
+	return left.every( ( value, index ) => value === right[ index ] );
 }
 
 function getTrackingCtaSummaryText(

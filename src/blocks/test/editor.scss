@@ -353,18 +353,63 @@
 	}
 
 	&__compare-card {
+		display: grid;
+		gap: 10px;
 		padding: 12px;
 		border-radius: 12px;
 		border: 1px solid rgba(112, 82, 18, 0.12);
 		background: rgba(255, 255, 255, 0.62);
 	}
 
+	&__compare-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	&__compare-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	&__compare-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: rgba(112, 82, 18, 0.08);
+		color: #6d6554;
+		font-size: 11px;
+		line-height: 1.35;
+	}
+
 	&__compare-title {
-		margin: 0 0 10px;
+		margin: 0;
 		font-size: 13px;
 		font-weight: 600;
 		line-height: 1.35;
 		color: #2f2a22;
+	}
+
+	&__compare-status {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #5c5441;
+	}
+
+	&__compare-value {
+		margin: 0;
+	}
+
+	&__compare-baseline {
+		margin: 6px 0 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #6d6554;
 	}
 
 	&__compare-list {
@@ -376,5 +421,11 @@
 		li {
 			margin: 0;
 		}
+	}
+
+	&__compare-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 }

@@ -31,7 +31,7 @@ Features included in this version:
 * Quick-start starter templates for common experiment layouts
 * Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
 * Variant authoring actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
-* Read-only Compare variants summaries plus CTA fallback visibility in the editor
+* Changed-only Compare variants cards with direct edit and structure sync actions in the editor
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Diagnostics stats for both the current block and shared experiment
@@ -83,7 +83,7 @@ Use the quick-start starter templates when the block is still empty, or open `Mo
 
 = How do I keep the Variant layouts aligned while editing different copy? =
 
-Use the `Variant structure` panel. The active Variant is treated as the current structure source, the editor tells you when other Variants no longer match it, and `Sync now` aligns the other structures while keeping matching target content in place whenever the block type and order still line up.
+Use the `Variant structure` panel. The active Variant is treated as the current structure source, the editor tells you when other Variants no longer match it, and `Sync now` aligns the other structures while keeping matching target content in place whenever the block type and order still line up. The `Compare variants` panel uses that same active baseline, hides unchanged fields, and lets you jump straight into `Edit Variant X` or `Sync structure now` when structure rows differ.
 
 = When is an impression counted? =
 
