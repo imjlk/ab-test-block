@@ -107,6 +107,10 @@ function buildButton( text: string ) {
 	return `<!-- wp:buttons --><div class="wp-block-buttons"><!-- wp:button --><div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="#smoke-button">${ text }</a></div><!-- /wp:button --></div><!-- /wp:buttons -->`;
 }
 
+function buildEmptyParagraph() {
+	return '<!-- wp:paragraph --><p></p><!-- /wp:paragraph -->';
+}
+
 function buildVariantBlock( variantKey: VariantKey, html: string ) {
 	return `<!-- wp:abtest-block/variant ${ JSON.stringify( {
 		variantKey,
@@ -259,6 +263,64 @@ function buildSingleVariantExperimentBlock( {
 		'a',
 		buildParagraph( variantABody )
 	) }<!-- /wp:abtest-block/test -->`;
+}
+
+function buildEmptyExperimentBlock( {
+	blockInstanceId,
+	experimentId,
+	experimentLabel,
+	variantCount = 3,
+}: {
+	blockInstanceId: string;
+	experimentId: string;
+	experimentLabel: string;
+	variantCount?: VariantCount;
+} ) {
+	const attributes = {
+		automaticMetric: 'ctr',
+		blockInstanceId,
+		emitBrowserEvents: true,
+		emitClarityHook: false,
+		emitDataLayer: false,
+		emitKexpLayer: false,
+		evaluationWindowDays: 14,
+		experimentId,
+		experimentLabel,
+		frontRenderMode: 'dom-prune',
+		lockWinnerAfterSelection: true,
+		minimumClicksPerVariant: 1,
+		minimumImpressionsPerVariant: 100,
+		previewQueryKey: `ab_${ experimentId }`,
+		showRuntimeLabel: false,
+		stickyAssignment: true,
+		stickyScope: 'instance',
+		trackClicks: true,
+		trackImpressions: true,
+		variantCount,
+		weights:
+			variantCount === 3
+				? {
+						a: 34,
+						b: 33,
+						c: 33,
+				  }
+				: {
+						a: 50,
+						b: 50,
+				  },
+		winnerMode: 'off',
+	};
+
+	return `<!-- wp:abtest-block/test ${ JSON.stringify(
+		attributes
+	) } -->${ buildVariantBlock(
+		'a',
+		buildEmptyParagraph()
+	) }${ buildVariantBlock( 'b', buildEmptyParagraph() ) }${
+		variantCount === 3
+			? buildVariantBlock( 'c', buildEmptyParagraph() )
+			: ''
+	}<!-- /wp:abtest-block/test -->`;
 }
 
 async function launchContext( initScript?: () => void ) {
@@ -1607,6 +1669,7 @@ async function runCoreSmoke( statsPostId: number ) {
 
 async function runEditorSmoke(
 	statsPostId: number,
+	templatePostId: number,
 	malformedPostId: number,
 	lifecyclePostId: number,
 	authoringPostId: number,
@@ -1945,6 +2008,146 @@ async function runEditorSmoke(
 			'abtest-cta'
 		),
 		'Expected the Tracking panel CTA action to remove the explicit CTA class from the remembered CTA block'
+	);
+	await adminPage.waitForFunction(
+		() =>
+			document.body.textContent?.includes( 'Fallback tracking is active' )
+	);
+	await selectParentBlock( adminPage, 'e2einstats1' );
+	const trackingSidebarFallback = await openSidebarPanel(
+		adminPage,
+		'Tracking'
+	);
+	assert(
+		( await trackingSidebarFallback.innerText() ).includes(
+			'No explicit CTA in Variant A. Fallback tracking is active for Inserted CTA button.'
+		),
+		'Expected Tracking to explain when the active variant is currently using fallback CTA detection'
+	);
+	assert(
+		(
+			( await frame
+				.locator( '.wp-block-abtest-block-test__cta-badge' )
+				.textContent() ) ?? ''
+		).trim() === 'Variant A CTA: Fallback tracking is active',
+		'Expected the editor canvas to show a compact fallback CTA badge for the active variant'
+	);
+	await trackingSidebarFallback
+		.getByRole( 'button', { name: 'Mark as primary CTA' } )
+		.click();
+	await adminPage.waitForTimeout( 400 );
+	await adminPage.waitForFunction(
+		() =>
+			document.body.textContent?.includes(
+				'Primary CTA selected in Variant A'
+			)
+	);
+	const trackingSidebarAfterRestore = await openSidebarPanel(
+		adminPage,
+		'Tracking'
+	);
+	assert(
+		( await trackingSidebarAfterRestore.innerText() ).includes(
+			'Primary CTA selected in Variant A: Inserted CTA button.'
+		),
+		'Expected Tracking to describe the active variant as explicitly marked once the Primary CTA toggle is restored'
+	);
+	assert(
+		(
+			( await frame
+				.locator( '.wp-block-abtest-block-test__cta-badge' )
+				.textContent() ) ?? ''
+		).trim() === 'Variant A CTA: Primary CTA selected',
+		'Expected the editor canvas CTA badge to update after restoring an explicit primary CTA'
+	);
+
+	await openEditor( adminPage, templatePostId );
+	const templateFrame = await selectParentBlock( adminPage, 'e2etemplate1' );
+	await templateFrame
+		.getByText( 'Quick-start templates' )
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	await templateFrame
+		.getByRole( 'button', { name: 'Headline + body + button' } )
+		.click();
+	await adminPage.waitForTimeout( 600 );
+	const templateTexts = await getVariantCanvasTexts(
+		adminPage,
+		templateFrame,
+		[ 'a', 'b', 'c' ]
+	);
+	assert(
+		templateTexts.a.includes( 'Free shipping on your first order' ) &&
+			templateTexts.b.includes( 'Checkout in one fast step' ) &&
+			templateTexts.c.includes( 'Limited-time bonus for new customers' ),
+		'Expected the starter template picker to seed variant-specific copy into every variant'
+	);
+	await selectInnerBlockByName(
+		adminPage,
+		'e2etemplate1',
+		'a',
+		'core/button'
+	);
+	await adminPage.waitForTimeout( 400 );
+	assert(
+		( await getSelectedBlockClassName( adminPage ) ).includes(
+			'abtest-cta'
+		),
+		'Expected starter templates to pre-mark the seeded CTA button as the primary CTA'
+	);
+	await selectParentBlock( adminPage, 'e2etemplate1' );
+	await adminPage
+		.getByRole( 'button', { name: 'Open quick summary and actions' } )
+		.click();
+	const templateMenu = adminPage.locator(
+		'.wp-block-abtest-block-test__toolbar-dropdown-content'
+	);
+	assert(
+		( await templateMenu
+			.getByRole( 'menuitem', { name: 'Headline + body + button' } )
+			.isDisabled() ) === true,
+		'Expected starter template actions to disable once the experiment already contains seeded content'
+	);
+	await adminPage.keyboard.press( 'Escape' );
+	await insertHeadingIntoVariant(
+		adminPage,
+		'e2etemplate1',
+		'a',
+		'Template Drift Heading'
+	);
+	await adminPage.waitForTimeout( 500 );
+	await selectParentBlock( adminPage, 'e2etemplate1' );
+	const compareSidebar = await openSidebarPanel(
+		adminPage,
+		'Compare variants'
+	);
+	const compareSidebarText = ( await compareSidebar.innerText() ).replace(
+		/\s+/g,
+		' '
+	);
+	assert(
+		compareSidebarText.includes( 'Variant A' ) &&
+			compareSidebarText.includes(
+				'Primary CTA: Explore free shipping'
+			) &&
+			compareSidebarText.includes( 'Active in traffic mode' ),
+		'Expected Compare variants to summarize CTA text and active preview relevance for the visible variant'
+	);
+	assert(
+		compareSidebarText.includes(
+			'Variants B and C differ from Variant A.'
+		),
+		'Expected Compare variants to surface a structure mismatch summary when one variant drifts'
+	);
+	await compareSidebar
+		.getByRole( 'button', { name: 'Open Variant structure' } )
+		.click();
+	await adminPage.waitForTimeout( 300 );
+	assert(
+		( await adminPage
+			.locator( '.interface-interface-skeleton__sidebar' )
+			.getByText( 'Sync structure from active variant' )
+			.count() ) === 1,
+		'Expected Compare variants to link directly into the Variant structure sync controls when structures differ'
 	);
 
 	await openEditor( adminPage, lifecyclePostId );
@@ -2437,6 +2640,15 @@ async function run() {
 			variantABody: 'Editor DOM prune Variant A body',
 		} ) }${ buildParagraph( 'Outside block' ) }`
 	);
+	const templatePostId = createFixturePost(
+		'E2E Starter Template Fixture',
+		buildEmptyExperimentBlock( {
+			blockInstanceId: 'e2etemplate1',
+			experimentId: 'e2e_template_fixture',
+			experimentLabel: 'Starter Template Fixture',
+			variantCount: 3,
+		} )
+	);
 	const lifecyclePostId = createFixturePost(
 		'E2E Experiment Lifecycle Fixture',
 		buildExperimentBlock( {
@@ -2558,6 +2770,7 @@ async function run() {
 	if ( RUN_EDITOR_CHECKS ) {
 		await runEditorSmoke(
 			statsPostId,
+			templatePostId,
 			malformedEditorPostId,
 			lifecyclePostId,
 			authoringPostId,

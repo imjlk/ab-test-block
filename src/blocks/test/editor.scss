@@ -9,6 +9,17 @@
 		color: #7c5f26;
 	}
 
+	&__cta-badge {
+		display: inline-flex;
+		margin: 0 0 10px;
+		padding: 6px 10px;
+		border-radius: 999px;
+		background: rgba(124, 95, 38, 0.08);
+		color: #5c5441;
+		font-size: 11px;
+		line-height: 1.4;
+	}
+
 	&__debug {
 		margin: 8px 0 0;
 		color: #5c5441;
@@ -206,6 +217,37 @@
 		box-shadow: none;
 	}
 
+	&__starter-picker {
+		display: grid;
+		gap: 10px;
+		margin: 0 0 14px;
+		padding: 14px;
+		border-radius: 14px;
+		border: 1px solid rgba(112, 82, 18, 0.14);
+		background: rgba(255, 255, 255, 0.72);
+	}
+
+	&__starter-picker-title {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1.35;
+		color: #2f2a22;
+	}
+
+	&__starter-picker-note {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.5;
+		color: #5c5441;
+	}
+
+	&__starter-picker-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
 	&__toolbar-dropdown-content {
 		min-width: 320px;
 	}
@@ -301,6 +343,38 @@
 		span {
 			color: #6d6554;
 			text-transform: lowercase;
+		}
+	}
+
+	&__compare-grid {
+		display: grid;
+		gap: 12px;
+		margin: 12px 0 0;
+	}
+
+	&__compare-card {
+		padding: 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(112, 82, 18, 0.12);
+		background: rgba(255, 255, 255, 0.62);
+	}
+
+	&__compare-title {
+		margin: 0 0 10px;
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1.35;
+		color: #2f2a22;
+	}
+
+	&__compare-list {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding-left: 18px;
+
+		li {
+			margin: 0;
 		}
 	}
 }

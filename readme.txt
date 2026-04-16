@@ -28,8 +28,10 @@ Features included in this version:
 * Manual winner selection
 * CTR-based automatic winner reevaluation with readable Diagnostics summaries
 * Editor actions for marking a selected block as the primary CTA
+* Quick-start starter templates for common experiment layouts
 * Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
 * Variant authoring actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
+* Read-only Compare variants summaries plus CTA fallback visibility in the editor
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Diagnostics stats for both the current block and shared experiment
@@ -69,11 +71,15 @@ This version uses CTR only. When every eligible variant reaches the minimum thre
 
 = How do I mark a CTA? =
 
-Select the CTA block in the editor and use the `Primary CTA` action from the block toolbar or the `Tracking` panel. If you are using custom markup, add the `data-abtest-cta` attribute instead. When no marker is present, the plugin falls back to links and buttons inside the active variant.
+Select the CTA block in the editor and use the `Primary CTA` action from the block toolbar or the `Tracking` panel. If you are using custom markup, add the `data-abtest-cta` attribute instead. When no marker is present, the plugin falls back to links and buttons inside the active variant, and the editor tells you whether the current variant is using an explicit CTA or fallback tracking.
 
 = How do I start a fresh experiment without deleting the old data? =
 
 Use the `Experiment lifecycle` panel. `Start new experiment` rotates the tracking IDs and keeps the current content, while `Use current winner as new baseline` copies the resolved winner into every Variant before starting a new run.
+
+= How do I start faster with a ready-made layout? =
+
+Use the quick-start starter templates when the block is still empty, or open `More` and apply a starter template before you add custom content. Each template seeds every Variant with the same structure, variant-specific sample copy, and an initial primary CTA.
 
 = How do I keep the Variant layouts aligned while editing different copy? =
 

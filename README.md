@@ -11,8 +11,10 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Sticky assignment scoped either to this page/block or to a shared experiment ID
 -   Manual winner and CTR-based automatic winner
 -   Editor actions for marking a selected block as the primary CTA
+-   Quick-start starter templates for seeding common experiment layouts
 -   Fresh experiment lifecycle actions for starting a new run or using the current winner as a new baseline
 -   Variant productivity actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
+-   Read-only variant comparison summaries plus CTA fallback visibility in the editor
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 -   Server stats surfaced back into the editor Diagnostics panel
@@ -26,6 +28,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   When a CTA-capable block is selected in the editor, use `Primary CTA` from the toolbar or the `Tracking` panel to add the explicit marker automatically.
 -   For custom markup, use the `data-abtest-cta` attribute instead.
 -   If no CTA marker exists inside the active variant, links and buttons fall back automatically.
+-   The editor now tells you whether the active variant has an explicit primary CTA, is relying on fallback tracking, or still needs a CTA candidate.
 
 ## Experiment Identity
 
@@ -46,6 +49,8 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Query preview, locked winner, manual winner, automatic winner candidate, sticky assignment, and weighted random all share the same precedence in PHP and the browser runtime.
 -   The assignment label is hidden by default and can be toggled from the block toolbar or the `Labels & Hints` inspector panel.
 -   The `Variant structure` panel compares every other variant against the active structure and offers one-click sync when they no longer match.
+-   `Quick-start templates` seed every variant with the same starting layout and pre-mark the starter button as the primary CTA.
+-   `Compare variants` summarizes structure, CTA text, weight, and current preview or winner relevance without switching canvases.
 
 ## REST and Diagnostics Surface
 

@@ -132,11 +132,127 @@ type VariantStructureSyncResult = {
 	reasons: VariantStructureMismatchReason[];
 };
 
+type StarterTemplateId = 'headline-body-button' | 'hero-cta' | 'pricing-offer';
+
+type StarterTemplateOption = {
+	description: string;
+	id: StarterTemplateId;
+	label: string;
+};
+
+type VariantCompareSummary = {
+	ctaText: string;
+	relevanceText: string;
+	structureSummary: string[];
+	variantKey: VariantKey;
+	weightText: string;
+};
+
+type VariantCtaAnalysis = {
+	explicitLabel?: string;
+	fallbackLabels: string[];
+	status: 'explicit' | 'fallback' | 'none';
+};
+
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
 const VARIANT_LOCK = {
 	move: true,
 	remove: true,
 } as const;
+const STARTER_TEMPLATE_SEEDS: Record<
+	StarterTemplateId,
+	Record<
+		VariantKey,
+		{
+			body: string;
+			cta: string;
+			heading: string;
+			listItems: string[];
+			supportingText: string;
+		}
+	>
+> = {
+	'headline-body-button': {
+		a: {
+			body: 'Lead with a simple value proposition and a single call to action.',
+			cta: 'Explore free shipping',
+			heading: 'Free shipping on your first order',
+			listItems: [],
+			supportingText: '',
+		},
+		b: {
+			body: 'Keep the same structure and test a tighter convenience message.',
+			cta: 'See one-click checkout',
+			heading: 'Checkout in one fast step',
+			listItems: [],
+			supportingText: '',
+		},
+		c: {
+			body: 'Use the third slot for urgency, social proof, or a limited-time angle.',
+			cta: 'Unlock this week’s bonus',
+			heading: 'Limited-time bonus for new customers',
+			listItems: [],
+			supportingText: '',
+		},
+	},
+	'hero-cta': {
+		a: {
+			body: 'Frame the hero around the core promise and keep the first action obvious.',
+			cta: 'Start free today',
+			heading: 'Build your first experiment in minutes',
+			listItems: [],
+			supportingText:
+				'Pair the hero message with one reinforcing line before the CTA.',
+		},
+		b: {
+			body: 'Swap the angle while keeping the same hero rhythm across variants.',
+			cta: 'See the setup flow',
+			heading: 'Launch cleaner tests without extra tools',
+			listItems: [],
+			supportingText:
+				'This version leans on clarity and implementation speed.',
+		},
+		c: {
+			body: 'Use the third hero slot for urgency, reassurance, or a stronger proof point.',
+			cta: 'Preview the winning flow',
+			heading: 'Give every landing page a faster feedback loop',
+			listItems: [],
+			supportingText:
+				'Keep structure identical so only the message changes between variants.',
+		},
+	},
+	'pricing-offer': {
+		a: {
+			body: 'This framing works well when you want to compare offer packaging.',
+			cta: 'See the starter plan',
+			heading: 'One offer, three clear reasons to try it',
+			listItems: [ 'Free shipping', 'No setup fee', 'Cancel anytime' ],
+			supportingText: '',
+		},
+		b: {
+			body: 'Keep the layout stable and change only the benefit framing.',
+			cta: 'Compare the annual plan',
+			heading: 'Bundle savings into one simple decision',
+			listItems: [
+				'Save with annual billing',
+				'Priority onboarding',
+				'Shared experiment reporting',
+			],
+			supportingText: '',
+		},
+		c: {
+			body: 'Use the third offer to test urgency or bonus positioning.',
+			cta: 'Claim the limited bonus',
+			heading: 'Add a time-boxed incentive to the same offer',
+			listItems: [
+				'Bonus onboarding session',
+				'Limited-time upgrade',
+				'Fast setup checklist',
+			],
+			supportingText: '',
+		},
+	},
+};
 
 function haveSameWeights(
 	left: Partial< AbTestExperimentAttributes[ 'weights' ] > | undefined,
@@ -206,6 +322,8 @@ export default function Edit( {
 	>();
 	const [ isDiagnosticsPanelOpen, setIsDiagnosticsPanelOpen ] =
 		useState( false );
+	const [ isVariantStructurePanelOpen, setIsVariantStructurePanelOpen ] =
+		useState( false );
 	const [ winnerEvaluationOverride, setWinnerEvaluationOverride ] = useState<
 		AbTestWinnerEvaluationSnapshot | undefined
 	>();
@@ -218,6 +336,7 @@ export default function Edit( {
 	const [ statsError, setStatsError ] = useState< string | undefined >();
 	const [ statsRefreshToken, setStatsRefreshToken ] = useState( 0 );
 	const diagnosticsPanelRef = useRef< HTMLDivElement | null >( null );
+	const variantStructurePanelRef = useRef< HTMLDivElement | null >( null );
 	const normalizedAttributes = useMemo(
 		() => sanitizeParentAttributes( attributes ),
 		[ attributes ]
@@ -481,6 +600,60 @@ export default function Edit( {
 				structureSourceVariantKey
 		  )
 		: __( 'All variants match the active structure.', 'ab-test-block' );
+	const starterTemplateOptions = useMemo(
+		() => getStarterTemplateOptions(),
+		[]
+	);
+	const canApplyStarterTemplates = useMemo(
+		() =>
+			variantKeys.every( ( variantKey ) =>
+				isStarterTemplateSeedState(
+					innerBlockByVariant.get( variantKey )?.innerBlocks ?? []
+				)
+			),
+		[ innerBlockByVariant, variantKeys ]
+	);
+	const compareVariantSummaries = useMemo(
+		() =>
+			variantKeys.map( ( variantKey ) =>
+				getVariantCompareSummary( {
+					activePreviewVariantKey,
+					attributes: normalizedAttributes,
+					previewMode,
+					blocks:
+						innerBlockByVariant.get( variantKey )?.innerBlocks ??
+						[],
+					variantKey,
+					winnerPreviewState,
+				} )
+			),
+		[
+			activePreviewVariantKey,
+			innerBlockByVariant,
+			normalizedAttributes,
+			previewMode,
+			variantKeys,
+			winnerPreviewState,
+		]
+	);
+	const activeVariantCtaAnalysis = useMemo(
+		() =>
+			analyzeVariantCta(
+				innerBlockByVariant.get( activePreviewVariantKey )
+					?.innerBlocks ?? []
+			),
+		[ activePreviewVariantKey, innerBlockByVariant ]
+	);
+	const trackingCtaSummaryText = getTrackingCtaSummaryText(
+		activePreviewVariantKey,
+		activeVariantCtaAnalysis,
+		normalizedAttributes.trackClicks
+	);
+	const trackingCanvasBadgeText = getTrackingCanvasBadgeText(
+		activePreviewVariantKey,
+		activeVariantCtaAnalysis,
+		normalizedAttributes.trackClicks
+	);
 	const automaticWinnerReasonSummary = getWinnerStateText(
 		normalizedAttributes,
 		winnerPreviewState
@@ -682,6 +855,20 @@ export default function Edit( {
 
 		return () => window.clearTimeout( timeoutId );
 	}, [ isDiagnosticsPanelOpen ] );
+
+	useEffect( () => {
+		if ( ! isVariantStructurePanelOpen ) {
+			return undefined;
+		}
+
+		const timeoutId = window.setTimeout( () => {
+			variantStructurePanelRef.current?.scrollIntoView( {
+				block: 'nearest',
+			} );
+		}, 80 );
+
+		return () => window.clearTimeout( timeoutId );
+	}, [ isVariantStructurePanelOpen ] );
 
 	useEffect( () => {
 		const desiredBlocks = variantKeys.map( ( key ) => {
@@ -921,6 +1108,33 @@ export default function Edit( {
 
 	function previewWinnerMode() {
 		setPreviewMode( 'winner' );
+	}
+
+	function applyStarterTemplate( templateId: StarterTemplateId ) {
+		if ( ! canApplyStarterTemplates ) {
+			return;
+		}
+
+		variantKeys.forEach( ( variantKey ) => {
+			const targetVariantBlock = innerBlockByVariant.get( variantKey );
+
+			if ( ! targetVariantBlock ) {
+				return;
+			}
+
+			replaceInnerBlocks(
+				targetVariantBlock.clientId,
+				createStarterTemplateBlocks(
+					templateId,
+					variantKey
+				) as unknown[],
+				false
+			);
+		} );
+
+		setPreviewMode( 'traffic' );
+		setLastTrafficVariantKey( 'a' );
+		selectBlock( clientId );
 	}
 
 	const validationState = useMemo(
@@ -1206,7 +1420,9 @@ export default function Edit( {
 		const missingTargets: VariantKey[] = [];
 
 		variantKeys
-			.filter( ( variantKey ) => variantKey !== activePreviewVariantKey )
+			.filter(
+				( variantKey ) => variantKey !== structureSourceVariantKey
+			)
 			.forEach( ( targetVariantKey ) => {
 				const targetVariantBlock =
 					innerBlockByVariant.get( targetVariantKey );
@@ -1309,6 +1525,11 @@ export default function Edit( {
 
 	function openDiagnosticsPanel( onClose?: () => void ) {
 		setIsDiagnosticsPanelOpen( true );
+		onClose?.();
+	}
+
+	function openVariantStructurePanel( onClose?: () => void ) {
+		setIsVariantStructurePanelOpen( true );
 		onClose?.();
 	}
 
@@ -1487,6 +1708,31 @@ export default function Edit( {
 													'ab-test-block'
 											  ) }
 									</MenuItem>
+								</MenuGroup>
+								<MenuGroup
+									label={ __(
+										'Starter templates',
+										'ab-test-block'
+									) }
+								>
+									{ starterTemplateOptions.map(
+										( template ) => (
+											<MenuItem
+												key={ template.id }
+												disabled={
+													! canApplyStarterTemplates
+												}
+												onClick={ () => {
+													applyStarterTemplate(
+														template.id
+													);
+													onClose();
+												} }
+											>
+												{ template.label }
+											</MenuItem>
+										)
+									) }
 								</MenuGroup>
 								<MenuGroup
 									label={ __(
@@ -1850,8 +2096,10 @@ export default function Edit( {
 					) }
 				</PanelBody>
 				<PanelBody
+					ref={ variantStructurePanelRef }
 					title={ __( 'Variant structure', 'ab-test-block' ) }
-					initialOpen={ false }
+					opened={ isVariantStructurePanelOpen }
+					onToggle={ setIsVariantStructurePanelOpen }
 				>
 					<p className="wp-block-abtest-block-test__sidebar-note">
 						{ sprintf(
@@ -1910,6 +2158,93 @@ export default function Edit( {
 							{ variantStructureFeedback.message }
 						</p>
 					) }
+				</PanelBody>
+				<PanelBody
+					title={ __( 'Compare variants', 'ab-test-block' ) }
+					initialOpen={ false }
+				>
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ sprintf(
+							/* translators: %s: active variant key */
+							__(
+								'Comparing every variant against the active structure in Variant %s.',
+								'ab-test-block'
+							),
+							structureSourceVariantKey.toUpperCase()
+						) }
+					</p>
+					{ hasVariantStructureDrift && (
+						<Notice status="warning" isDismissible={ false }>
+							<p>{ variantStructureSummaryText }</p>
+							<Button
+								variant="secondary"
+								onClick={ () => openVariantStructurePanel() }
+							>
+								{ __(
+									'Open Variant structure',
+									'ab-test-block'
+								) }
+							</Button>
+						</Notice>
+					) }
+					<div className="wp-block-abtest-block-test__compare-grid">
+						{ compareVariantSummaries.map( ( summary ) => (
+							<div
+								key={ summary.variantKey }
+								className="wp-block-abtest-block-test__compare-card"
+							>
+								<h4 className="wp-block-abtest-block-test__compare-title">
+									{ sprintf(
+										/* translators: %s: variant key */
+										__( 'Variant %s', 'ab-test-block' ),
+										summary.variantKey.toUpperCase()
+									) }
+								</h4>
+								<dl className="wp-block-abtest-block-test__debug-summary">
+									<div>
+										<dt>
+											{ __(
+												'Structure',
+												'ab-test-block'
+											) }
+										</dt>
+										<dd>
+											<ul className="wp-block-abtest-block-test__compare-list">
+												{ summary.structureSummary.map(
+													( line ) => (
+														<li key={ line }>
+															{ line }
+														</li>
+													)
+												) }
+											</ul>
+										</dd>
+									</div>
+									<div>
+										<dt>
+											{ __( 'CTA', 'ab-test-block' ) }
+										</dt>
+										<dd>{ summary.ctaText }</dd>
+									</div>
+									<div>
+										<dt>
+											{ __( 'Weight', 'ab-test-block' ) }
+										</dt>
+										<dd>{ summary.weightText }</dd>
+									</div>
+									<div>
+										<dt>
+											{ __(
+												'Relevance',
+												'ab-test-block'
+											) }
+										</dt>
+										<dd>{ summary.relevanceText }</dd>
+									</div>
+								</dl>
+							</div>
+						) ) }
+					</div>
 				</PanelBody>
 				<PanelBody
 					title={ __( 'Front-end Output', 'ab-test-block' ) }
@@ -2230,6 +2565,9 @@ export default function Edit( {
 							'ab-test-block'
 						) }
 					</Notice>
+					<Notice status="info" isDismissible={ false }>
+						{ trackingCtaSummaryText }
+					</Notice>
 					<Button
 						variant="secondary"
 						disabled={ ! canManageTrackingPanelPrimaryCta }
@@ -2532,6 +2870,11 @@ export default function Edit( {
 						{ assignmentLabelText }
 					</p>
 				) }
+				{ previewMode === 'traffic' && (
+					<p className="wp-block-abtest-block-test__cta-badge">
+						{ trackingCanvasBadgeText }
+					</p>
+				) }
 				<div className="wp-block-abtest-block-test__inline-notices">
 					{ previewMode === 'traffic' && hasVariantStructureDrift && (
 						<Notice
@@ -2588,6 +2931,35 @@ export default function Edit( {
 					) }
 				</div>
 				<div className="wp-block-abtest-block-test__stage">
+					{ canApplyStarterTemplates && (
+						<div className="wp-block-abtest-block-test__starter-picker">
+							<p className="wp-block-abtest-block-test__starter-picker-title">
+								{ __(
+									'Quick-start templates',
+									'ab-test-block'
+								) }
+							</p>
+							<p className="wp-block-abtest-block-test__starter-picker-note">
+								{ __(
+									'Seed every variant with the same starting structure, then edit each message independently.',
+									'ab-test-block'
+								) }
+							</p>
+							<div className="wp-block-abtest-block-test__starter-picker-actions">
+								{ starterTemplateOptions.map( ( template ) => (
+									<Button
+										key={ template.id }
+										variant="secondary"
+										onClick={ () =>
+											applyStarterTemplate( template.id )
+										}
+									>
+										{ template.label }
+									</Button>
+								) ) }
+							</div>
+						</div>
+					) }
 					<InnerBlocks
 						allowedBlocks={ ALLOWED_BLOCKS }
 						renderAppender={ undefined }
@@ -2968,6 +3340,461 @@ function getFrontEndOutputText( frontRenderMode: FrontRenderMode ) {
 	}
 
 	return __( 'Only render chosen variant', 'ab-test-block' );
+}
+
+function getStarterTemplateOptions(): StarterTemplateOption[] {
+	return [
+		{
+			description: __(
+				'Heading, body copy, and one primary CTA.',
+				'ab-test-block'
+			),
+			id: 'headline-body-button',
+			label: __( 'Headline + body + button', 'ab-test-block' ),
+		},
+		{
+			description: __(
+				'Hero-style message with supporting copy and one CTA.',
+				'ab-test-block'
+			),
+			id: 'hero-cta',
+			label: __( 'Hero CTA', 'ab-test-block' ),
+		},
+		{
+			description: __(
+				'Offer framing with pricing bullets and one CTA.',
+				'ab-test-block'
+			),
+			id: 'pricing-offer',
+			label: __( 'Pricing / offer framing', 'ab-test-block' ),
+		},
+	];
+}
+
+function createStarterTemplateBlocks(
+	templateId: StarterTemplateId,
+	variantKey: VariantKey
+) {
+	const seed = STARTER_TEMPLATE_SEEDS[ templateId ][ variantKey ];
+
+	switch ( templateId ) {
+		case 'hero-cta':
+			return [
+				createBlock( 'core/heading', {
+					content: seed.heading,
+					level: 2,
+				} ),
+				createBlock( 'core/paragraph', {
+					content: seed.body,
+				} ),
+				createBlock( 'core/paragraph', {
+					content: seed.supportingText,
+				} ),
+				createPrimaryCtaButtonsBlock( seed.cta ),
+			] as unknown as BlockRecord[];
+		case 'pricing-offer':
+			return [
+				createBlock( 'core/heading', {
+					content: seed.heading,
+					level: 3,
+				} ),
+				createBlock( 'core/list', {
+					values: seed.listItems
+						.map( ( item ) => `<li>${ item }</li>` )
+						.join( '' ),
+				} ),
+				createBlock( 'core/paragraph', {
+					content: seed.body,
+				} ),
+				createPrimaryCtaButtonsBlock( seed.cta ),
+			] as unknown as BlockRecord[];
+		case 'headline-body-button':
+		default:
+			return [
+				createBlock( 'core/heading', {
+					content: seed.heading,
+					level: 3,
+				} ),
+				createBlock( 'core/paragraph', {
+					content: seed.body,
+				} ),
+				createPrimaryCtaButtonsBlock( seed.cta ),
+			] as unknown as BlockRecord[];
+	}
+}
+
+function createPrimaryCtaButtonsBlock( text: string ) {
+	return createBlock( 'core/buttons', {}, [
+		createBlock( 'core/button', {
+			className: 'abtest-cta',
+			text,
+			url: '#starter-cta',
+		} ),
+	] );
+}
+
+function isStarterTemplateSeedState( blocks: BlockRecord[] ) {
+	if ( blocks.length !== 1 ) {
+		return false;
+	}
+
+	const [ firstBlock ] = blocks;
+
+	return (
+		firstBlock?.name === 'core/paragraph' &&
+		( firstBlock.innerBlocks?.length ?? 0 ) === 0 &&
+		getPlainTextContent( firstBlock.attributes.content ) === ''
+	);
+}
+
+function getVariantCompareSummary( {
+	activePreviewVariantKey,
+	attributes,
+	blocks,
+	previewMode,
+	variantKey,
+	winnerPreviewState,
+}: {
+	activePreviewVariantKey: VariantKey;
+	attributes: AbTestExperimentAttributes;
+	blocks: BlockRecord[];
+	previewMode: EditorPreviewMode;
+	variantKey: VariantKey;
+	winnerPreviewState: WinnerPreviewState;
+} ): VariantCompareSummary {
+	const ctaAnalysis = analyzeVariantCta( blocks );
+
+	return {
+		ctaText: getVariantCompareCtaText( ctaAnalysis ),
+		relevanceText: getVariantCompareRelevanceText(
+			activePreviewVariantKey,
+			attributes,
+			previewMode,
+			variantKey,
+			winnerPreviewState
+		),
+		structureSummary: summarizeBlockStructure( blocks ),
+		variantKey,
+		weightText: `${ String( attributes.weights[ variantKey ] ?? 0 ) }%`,
+	};
+}
+
+function summarizeBlockStructure( blocks: BlockRecord[] ) {
+	if ( blocks.length === 0 ) {
+		return [ __( 'No blocks yet', 'ab-test-block' ) ];
+	}
+
+	return blocks.map( ( block ) => {
+		const label = getBlockSummaryLabel( block );
+		const childSummary = Array.isArray( block.innerBlocks )
+			? block.innerBlocks.map( getBlockSummaryLabel ).filter( Boolean )
+			: [];
+
+		return childSummary.length > 0
+			? `${ label } > ${ childSummary.join( ', ' ) }`
+			: label;
+	} );
+}
+
+function getBlockSummaryLabel( block: BlockRecord ) {
+	const title = block.name ? getBlockType( block.name )?.title : undefined;
+
+	if ( title ) {
+		return title.toString();
+	}
+
+	return block.name
+		? block.name.replace( /^core\//, '' ).replace( /^abtest-block\//, '' )
+		: __( 'Block', 'ab-test-block' );
+}
+
+function analyzeVariantCta( blocks: BlockRecord[] ): VariantCtaAnalysis {
+	let explicitLabel: string | undefined;
+	const fallbackLabels: string[] = [];
+
+	const visit = ( entries: BlockRecord[] ) => {
+		entries.forEach( ( block ) => {
+			if ( ! explicitLabel && isExplicitCtaBlock( block ) ) {
+				explicitLabel =
+					getCtaCandidateLabel( block ) ??
+					__( 'Primary CTA', 'ab-test-block' );
+			}
+
+			const fallbackLabel = getFallbackCtaLabel( block );
+
+			if ( fallbackLabel && ! fallbackLabels.includes( fallbackLabel ) ) {
+				fallbackLabels.push( fallbackLabel );
+			}
+
+			if ( Array.isArray( block.innerBlocks ) ) {
+				visit( block.innerBlocks );
+			}
+		} );
+	};
+
+	visit( blocks );
+
+	if ( explicitLabel ) {
+		return {
+			explicitLabel,
+			fallbackLabels,
+			status: 'explicit',
+		};
+	}
+
+	if ( fallbackLabels.length > 0 ) {
+		return {
+			fallbackLabels,
+			status: 'fallback',
+		};
+	}
+
+	return {
+		fallbackLabels,
+		status: 'none',
+	};
+}
+
+function isExplicitCtaBlock( block: BlockRecord ) {
+	if ( hasClassNameToken( getBlockClassName( block ), 'abtest-cta' ) ) {
+		return true;
+	}
+
+	if ( block.name !== 'core/html' ) {
+		return false;
+	}
+
+	return /data-abtest-cta(?:=("|')?true\1)?/i.test(
+		String( block.attributes.content ?? '' )
+	);
+}
+
+function getFallbackCtaLabel( block: BlockRecord ) {
+	if ( block.name === 'core/button' ) {
+		return (
+			getPlainTextContent(
+				block.attributes.text ?? block.attributes.content
+			) || __( 'Button CTA', 'ab-test-block' )
+		);
+	}
+
+	if ( block.name === 'core/paragraph' || block.name === 'core/heading' ) {
+		const content = String( block.attributes.content ?? '' );
+
+		if ( /<a\b/i.test( content ) ) {
+			return (
+				getPlainTextContent( content ) ||
+				__( 'Link CTA', 'ab-test-block' )
+			);
+		}
+	}
+
+	if ( block.name === 'core/html' ) {
+		const content = String( block.attributes.content ?? '' );
+
+		if ( /<a\b/i.test( content ) ) {
+			return (
+				getPlainTextContent( content ) ||
+				__( 'Custom HTML link', 'ab-test-block' )
+			);
+		}
+
+		if (
+			/<button\b/i.test( content ) ||
+			/role=(["'])button\1/i.test( content ) ||
+			/type=(["'])submit\1/i.test( content )
+		) {
+			return __( 'Custom HTML button', 'ab-test-block' );
+		}
+	}
+
+	return undefined;
+}
+
+function getCtaCandidateLabel( block: BlockRecord ) {
+	if ( block.name === 'core/button' ) {
+		return (
+			getPlainTextContent(
+				block.attributes.text ?? block.attributes.content
+			) || __( 'Button CTA', 'ab-test-block' )
+		);
+	}
+
+	if ( block.name === 'core/html' ) {
+		return (
+			getPlainTextContent( block.attributes.content ) ||
+			__( 'Custom HTML CTA', 'ab-test-block' )
+		);
+	}
+
+	const contentLabel = getPlainTextContent( block.attributes.content );
+
+	if ( contentLabel.length > 0 ) {
+		return contentLabel;
+	}
+
+	return getBlockSummaryLabel( block );
+}
+
+function getVariantCompareCtaText( analysis: VariantCtaAnalysis ) {
+	if ( analysis.status === 'explicit' ) {
+		return sprintf(
+			/* translators: %s: CTA label */
+			__( 'Primary CTA: %s', 'ab-test-block' ),
+			analysis.explicitLabel ?? __( 'Selected', 'ab-test-block' )
+		);
+	}
+
+	if ( analysis.status === 'fallback' ) {
+		return sprintf(
+			/* translators: %s: CTA label */
+			__( 'Fallback CTA: %s', 'ab-test-block' ),
+			analysis.fallbackLabels[ 0 ]
+		);
+	}
+
+	return __( 'No CTA detected yet', 'ab-test-block' );
+}
+
+function getVariantCompareRelevanceText(
+	activePreviewVariantKey: VariantKey,
+	attributes: AbTestExperimentAttributes,
+	previewMode: EditorPreviewMode,
+	variantKey: VariantKey,
+	winnerPreviewState: WinnerPreviewState
+) {
+	const tags: string[] = [];
+
+	if ( previewMode === 'traffic' && variantKey === activePreviewVariantKey ) {
+		tags.push( __( 'Active in traffic mode', 'ab-test-block' ) );
+	}
+
+	if (
+		previewMode === 'winner' &&
+		winnerPreviewState.variant &&
+		variantKey === winnerPreviewState.variant
+	) {
+		tags.push( __( 'Shown in winner preview', 'ab-test-block' ) );
+	}
+
+	if (
+		attributes.winnerMode === 'manual' &&
+		attributes.manualWinner === variantKey
+	) {
+		tags.push( __( 'Manual winner', 'ab-test-block' ) );
+	}
+
+	if (
+		winnerPreviewState.status === 'candidate' &&
+		winnerPreviewState.variant === variantKey
+	) {
+		tags.push( __( 'Automatic candidate', 'ab-test-block' ) );
+	}
+
+	if (
+		winnerPreviewState.status === 'winner-locked' &&
+		winnerPreviewState.variant === variantKey
+	) {
+		tags.push( __( 'Locked winner', 'ab-test-block' ) );
+	}
+
+	return tags.join( ' · ' ) || __( 'No special state', 'ab-test-block' );
+}
+
+function getTrackingCtaSummaryText(
+	activeVariantKey: VariantKey,
+	analysis: VariantCtaAnalysis,
+	trackClicks: boolean
+) {
+	if ( ! trackClicks ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Click tracking is off for Variant %s.', 'ab-test-block' ),
+			activeVariantKey.toUpperCase()
+		);
+	}
+
+	if ( analysis.status === 'explicit' ) {
+		return sprintf(
+			/* translators: 1: variant key, 2: CTA label */
+			__(
+				'Primary CTA selected in Variant %1$s: %2$s.',
+				'ab-test-block'
+			),
+			activeVariantKey.toUpperCase(),
+			analysis.explicitLabel ?? __( 'Selected CTA', 'ab-test-block' )
+		);
+	}
+
+	if ( analysis.status === 'fallback' ) {
+		return sprintf(
+			/* translators: 1: variant key, 2: fallback CTA label */
+			__(
+				'No explicit CTA in Variant %1$s. Fallback tracking is active for %2$s.',
+				'ab-test-block'
+			),
+			activeVariantKey.toUpperCase(),
+			analysis.fallbackLabels[ 0 ]
+		);
+	}
+
+	return sprintf(
+		/* translators: %s: variant key */
+		__(
+			'No explicit CTA in Variant %s, and no fallback link or button is ready yet.',
+			'ab-test-block'
+		),
+		activeVariantKey.toUpperCase()
+	);
+}
+
+function getTrackingCanvasBadgeText(
+	activeVariantKey: VariantKey,
+	analysis: VariantCtaAnalysis,
+	trackClicks: boolean
+) {
+	if ( ! trackClicks ) {
+		return __( 'Click tracking is off', 'ab-test-block' );
+	}
+
+	if ( analysis.status === 'explicit' ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Variant %s CTA: Primary CTA selected', 'ab-test-block' ),
+			activeVariantKey.toUpperCase()
+		);
+	}
+
+	if ( analysis.status === 'fallback' ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__(
+				'Variant %s CTA: Fallback tracking is active',
+				'ab-test-block'
+			),
+			activeVariantKey.toUpperCase()
+		);
+	}
+
+	return sprintf(
+		/* translators: %s: variant key */
+		__( 'Variant %s CTA: No CTA detected yet', 'ab-test-block' ),
+		activeVariantKey.toUpperCase()
+	);
+}
+
+function getBlockClassName( block: BlockRecord ) {
+	return typeof block.attributes.className === 'string'
+		? block.attributes.className
+		: undefined;
+}
+
+function getPlainTextContent( value: unknown ) {
+	return String( value ?? '' )
+		.replace( /<[^>]+>/g, ' ' )
+		.replace( /&nbsp;/g, ' ' )
+		.replace( /\s+/g, ' ' )
+		.trim();
 }
 
 function getVariantStructureIssue(
