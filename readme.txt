@@ -29,7 +29,7 @@ Features included in this version:
 * CTR-based automatic winner reevaluation with readable Diagnostics summaries
 * Editor actions for marking a selected block as the primary CTA
 * Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
-* Variant authoring actions for copying the visible variant or swapping A/B content
+* Variant authoring actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
 * Viewable impression and primary CTA click aggregation
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
 * Editor Diagnostics stats for both the current block and shared experiment
@@ -74,6 +74,10 @@ Select the CTA block in the editor and use the `Primary CTA` action from the blo
 = How do I start a fresh experiment without deleting the old data? =
 
 Use the `Experiment lifecycle` panel. `Start new experiment` rotates the tracking IDs and keeps the current content, while `Use current winner as new baseline` copies the resolved winner into every Variant before starting a new run.
+
+= How do I keep the Variant layouts aligned while editing different copy? =
+
+Use the `Variant structure` panel. The active Variant is treated as the current structure source, the editor tells you when other Variants no longer match it, and `Sync now` aligns the other structures while keeping matching target content in place whenever the block type and order still line up.
 
 = When is an impression counted? =
 

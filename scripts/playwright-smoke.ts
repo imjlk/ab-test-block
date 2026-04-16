@@ -2098,19 +2098,69 @@ async function runEditorSmoke(
 		adminPage,
 		'Variant structure'
 	);
-	await structureSidebar
-		.getByRole( 'button', {
-			name: 'Sync structure from active variant',
-		} )
+	const structureSidebarBeforeSync = (
+		await structureSidebar.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		structureSidebarBeforeSync.includes(
+			'Variant B differs from Variant A.'
+		),
+		'Expected Variant structure to summarize which target variant differs from the active structure'
+	);
+	assert(
+		structureSidebarBeforeSync.includes( 'Variant B' ) &&
+			structureSidebarBeforeSync.includes( 'differs' ),
+		'Expected Variant structure to show Variant B as a differing target before sync'
+	);
+	const structureCanvasNotice = structureFrame.locator(
+		'.wp-block-abtest-block-test__inline-notice'
+	);
+	await structureCanvasNotice
+		.getByText(
+			'Variant B differs from the active structure in Variant A.'
+		)
+		.waitFor( {
+			state: 'visible',
+			timeout: 8000,
+		} );
+	await structureCanvasNotice
+		.getByRole( 'button', { name: 'Sync now' } )
 		.click();
 	await adminPage.waitForTimeout( 500 );
-	const structureSidebarText = ( await structureSidebar.innerText() ).replace(
-		/\s+/g,
-		' '
-	);
+	await structureSidebar
+		.getByRole( 'button', { name: 'Sync structure from active variant' } )
+		.waitFor( { state: 'visible', timeout: 8000 } );
+	const structureSidebarText = ( await structureSidebar.innerText() )
+		.replace( /\s+/g, ' ' )
+		.trim();
 	assert(
 		structureSidebarText.includes( 'Synced structure to Variant B.' ),
 		'Expected Variant structure to confirm the A/B sync targets'
+	);
+	assert(
+		structureSidebarText.includes(
+			'All variants match the active structure.'
+		) &&
+			structureSidebarText.includes( 'Variant B' ) &&
+			structureSidebarText.includes( 'matches' ),
+		'Expected Variant structure to update its summary and status rows after syncing from the canvas notice'
+	);
+	assert(
+		( await structureSidebar
+			.getByRole( 'button', {
+				name: 'Sync structure from active variant',
+			} )
+			.isDisabled() ) === true,
+		'Expected Variant structure sync button to disable once every target variant matches the active structure'
+	);
+	assert(
+		( await structureFrame
+			.locator( '.wp-block-abtest-block-test__inline-notice' )
+			.getByText(
+				'Variant B differs from the active structure in Variant A.'
+			)
+			.count() ) === 0,
+		'Expected the canvas structure notice to disappear after the variants are aligned'
 	);
 	const structureAfterInsert = await getVariantCanvasTexts(
 		adminPage,
@@ -2129,10 +2179,31 @@ async function runEditorSmoke(
 	await adminPage.waitForTimeout( 400 );
 	await moveLastBlockToTopInVariant( adminPage, 'e2estructure1', 'a' );
 	await adminPage.waitForTimeout( 500 );
+	await selectParentBlock( adminPage, 'e2estructure1' );
 	const structureSourceOrder = await getVariantInnerBlockNames(
 		adminPage,
 		'e2estructure1',
 		'a'
+	);
+	const structureSidebarAfterReorder = await openSidebarPanel(
+		adminPage,
+		'Variant structure'
+	);
+	const structureReorderText = (
+		await structureSidebarAfterReorder.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		structureReorderText.includes( 'Variant B' ) &&
+			structureReorderText.includes( 'differs' ),
+		'Expected Variant structure to detect block reordering differences before syncing them'
+	);
+	assert(
+		( await structureSidebarAfterReorder
+			.getByRole( 'button', {
+				name: 'Sync structure from active variant',
+			} )
+			.isDisabled() ) === false,
+		'Expected Variant structure sync button to re-enable when the active structure is reordered'
 	);
 	await structureSidebar
 		.getByRole( 'button', {
@@ -2163,17 +2234,19 @@ async function runEditorSmoke(
 			structureAfterReorder.b
 		}`
 	);
-	await structureSidebar
-		.getByRole( 'button', {
-			name: 'Sync structure from active variant',
-		} )
-		.click();
-	await adminPage.waitForTimeout( 500 );
 	assert(
-		( await structureSidebar.innerText() )
+		( await structureSidebarAfterReorder.innerText() )
 			.replace( /\s+/g, ' ' )
-			.includes( 'No structural differences found.' ),
-		'Expected a second structure sync with no changes to report the no-op message'
+			.includes( 'All variants match the active structure.' ),
+		'Expected Variant structure to report that the structures now match after the reorder sync'
+	);
+	assert(
+		( await structureSidebarAfterReorder
+			.getByRole( 'button', {
+				name: 'Sync structure from active variant',
+			} )
+			.isDisabled() ) === true,
+		'Expected Variant structure sync button to disable again after the reorder differences are resolved'
 	);
 
 	await openEditor( adminPage, structureSyncThreeVariantPostId );
@@ -2195,6 +2268,19 @@ async function runEditorSmoke(
 		adminPage,
 		'Variant structure'
 	);
+	const structureThreeBeforeSync = (
+		await structureThreeSidebar.innerText()
+	).replace( /\s+/g, ' ' );
+	assert(
+		structureThreeBeforeSync.includes(
+			'Variants B and C differ from Variant A.'
+		) &&
+			structureThreeBeforeSync.includes( 'Variant B' ) &&
+			structureThreeBeforeSync.includes( 'differs' ) &&
+			structureThreeBeforeSync.includes( 'Variant C' ) &&
+			structureThreeBeforeSync.includes( 'differs' ),
+		'Expected Variant structure to show both differing target variants before the A/B/C sync'
+	);
 	await structureThreeSidebar
 		.getByRole( 'button', {
 			name: 'Sync structure from active variant',
@@ -2207,8 +2293,23 @@ async function runEditorSmoke(
 	assert(
 		structureThreeSidebarText.includes(
 			'Synced structure to Variant B and Variant C.'
-		),
+		) &&
+			structureThreeSidebarText.includes(
+				'All variants match the active structure.'
+			) &&
+			structureThreeSidebarText.includes( 'Variant B' ) &&
+			structureThreeSidebarText.includes( 'matches' ) &&
+			structureThreeSidebarText.includes( 'Variant C' ) &&
+			structureThreeSidebarText.includes( 'matches' ),
 		'Expected Variant structure to report both target variants in the A/B/C sync flow'
+	);
+	assert(
+		( await structureThreeSidebar
+			.getByRole( 'button', {
+				name: 'Sync structure from active variant',
+			} )
+			.isDisabled() ) === true,
+		'Expected Variant structure sync button to disable after the A/B/C variants are aligned'
 	);
 	const structureThreeTexts = await getVariantCanvasTexts(
 		adminPage,

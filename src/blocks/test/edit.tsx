@@ -109,6 +109,18 @@ type WinnerThresholdProgress = {
 	eligible: boolean;
 };
 
+type VariantStructureMismatchReason =
+	| 'extra-block'
+	| 'missing-block'
+	| 'nested-structure-mismatch'
+	| 'reordered-block';
+
+type VariantStructureStatus = {
+	variantKey: VariantKey;
+	matches: boolean;
+	reasons: VariantStructureMismatchReason[];
+};
+
 type VariantStructureSyncFeedback = {
 	kind: 'success' | 'warning';
 	message: string;
@@ -117,6 +129,7 @@ type VariantStructureSyncFeedback = {
 type VariantStructureSyncResult = {
 	blocks: BlockRecord[];
 	changed: boolean;
+	reasons: VariantStructureMismatchReason[];
 };
 
 const ALLOWED_BLOCKS = [ 'abtest-block/variant' ];
@@ -351,12 +364,14 @@ export default function Edit( {
 		winnerEvaluationOverride ?? storedWinnerEvaluation;
 	const innerBlockByVariant = useMemo(
 		() =>
-			new Map(
-				innerBlocks
-					.filter( ( block ) =>
-						isVariantKeyValue( block.attributes.variantKey )
-					)
-					.map( ( block ) => [ block.attributes.variantKey, block ] )
+			new Map< VariantKey, BlockRecord >(
+				innerBlocks.flatMap( ( block ) => {
+					const { variantKey } = block.attributes;
+
+					return isVariantKeyValue( variantKey )
+						? ( [ [ variantKey, block ] ] as const )
+						: [];
+				} )
 			),
 		[ innerBlocks ]
 	);
@@ -380,6 +395,8 @@ export default function Edit( {
 		previewMode === 'winner'
 			? winnerPreviewState.variant ?? lastTrafficVariantKey
 			: activeTrafficVariantKey ?? lastTrafficVariantKey;
+	const structureSourceVariantKey =
+		activeTrafficVariantKey ?? lastTrafficVariantKey;
 	const previewSummary = getPreviewSummary(
 		normalizedAttributes,
 		previewMode,
@@ -445,6 +462,25 @@ export default function Edit( {
 		variantKeys.includes( winnerPreviewState.variant )
 			? winnerPreviewState.variant
 			: undefined;
+	const variantStructureStatuses = useMemo(
+		() =>
+			getVariantStructureStatuses(
+				structureSourceVariantKey,
+				variantKeys,
+				innerBlockByVariant
+			),
+		[ innerBlockByVariant, structureSourceVariantKey, variantKeys ]
+	);
+	const driftedVariantKeys = variantStructureStatuses
+		.filter( ( status ) => ! status.matches )
+		.map( ( status ) => status.variantKey );
+	const hasVariantStructureDrift = driftedVariantKeys.length > 0;
+	const variantStructureSummaryText = hasVariantStructureDrift
+		? getVariantStructureDriftSummary(
+				driftedVariantKeys,
+				structureSourceVariantKey
+		  )
+		: __( 'All variants match the active structure.', 'ab-test-block' );
 	const automaticWinnerReasonSummary = getWinnerStateText(
 		normalizedAttributes,
 		winnerPreviewState
@@ -604,7 +640,7 @@ export default function Edit( {
 	useEffect( () => {
 		setVariantStructureFeedback( undefined );
 	}, [
-		activePreviewVariantKey,
+		structureSourceVariantKey,
 		clientId,
 		normalizedAttributes.blockInstanceId,
 		normalizedAttributes.variantCount,
@@ -1147,7 +1183,7 @@ export default function Edit( {
 
 	function syncStructureFromActiveVariant() {
 		const sourceVariantBlock = innerBlockByVariant.get(
-			activePreviewVariantKey
+			structureSourceVariantKey
 		);
 
 		if ( ! sourceVariantBlock ) {
@@ -1236,6 +1272,7 @@ export default function Edit( {
 				formatVariantLabels( changedTargets )
 			),
 		} );
+		selectBlock( clientId );
 	}
 
 	function swapPrimaryVariants() {
@@ -1823,9 +1860,33 @@ export default function Edit( {
 								'Variant %s is the current structure source. Matching blocks keep their target content when the block type and order line up.',
 								'ab-test-block'
 							),
-							activePreviewVariantKey.toUpperCase()
+							structureSourceVariantKey.toUpperCase()
 						) }
 					</p>
+					<p className="wp-block-abtest-block-test__sidebar-note">
+						{ variantStructureSummaryText }
+					</p>
+					<div className="wp-block-abtest-block-test__structure-status-list">
+						{ variantStructureStatuses.map( ( status ) => (
+							<div
+								key={ status.variantKey }
+								className="wp-block-abtest-block-test__structure-status-row"
+							>
+								<strong>
+									{ sprintf(
+										/* translators: %s: variant key */
+										__( 'Variant %s', 'ab-test-block' ),
+										status.variantKey.toUpperCase()
+									) }
+								</strong>
+								<span>
+									{ status.matches
+										? __( 'matches', 'ab-test-block' )
+										: __( 'differs', 'ab-test-block' ) }
+								</span>
+							</div>
+						) ) }
+					</div>
 					<p className="wp-block-abtest-block-test__sidebar-note">
 						{ __(
 							'Missing blocks are filled from the active variant structure, and extra blocks are removed from the target variants.',
@@ -1834,6 +1895,7 @@ export default function Edit( {
 					</p>
 					<Button
 						variant="secondary"
+						disabled={ ! hasVariantStructureDrift }
 						onClick={ syncStructureFromActiveVariant }
 					>
 						{ __(
@@ -2471,6 +2533,28 @@ export default function Edit( {
 					</p>
 				) }
 				<div className="wp-block-abtest-block-test__inline-notices">
+					{ previewMode === 'traffic' && hasVariantStructureDrift && (
+						<Notice
+							className="wp-block-abtest-block-test__inline-notice"
+							status="warning"
+							isDismissible={ false }
+						>
+							<div className="wp-block-abtest-block-test__inline-notice-actions">
+								<span>
+									{ getVariantStructureCanvasNoticeText(
+										driftedVariantKeys,
+										structureSourceVariantKey
+									) }
+								</span>
+								<Button
+									variant="secondary"
+									onClick={ syncStructureFromActiveVariant }
+								>
+									{ __( 'Sync now', 'ab-test-block' ) }
+								</Button>
+							</div>
+						</Notice>
+					) }
 					{ previewMode === 'winner' &&
 						! winnerPreviewState.variant && (
 							<Notice
@@ -3114,9 +3198,18 @@ function syncVariantBlockTree(
 	sourceBlocks: BlockRecord[],
 	targetBlocks: BlockRecord[]
 ): VariantStructureSyncResult {
+	return analyzeVariantStructure( sourceBlocks, targetBlocks );
+}
+
+function analyzeVariantStructure(
+	sourceBlocks: BlockRecord[],
+	targetBlocks: BlockRecord[]
+): VariantStructureSyncResult {
 	const targetBlocksByName = new Map< string, BlockRecord[] >();
 	const sourceOccurrenceCounts = new Map< string, number >();
 	let changed = sourceBlocks.length !== targetBlocks.length;
+	const reasons = new Set< VariantStructureMismatchReason >();
+	const matchedTargetClientIds = new Set< string >();
 
 	targetBlocks.forEach( ( block ) => {
 		const blockName = block.name ?? '';
@@ -3136,16 +3229,20 @@ function syncVariantBlockTree(
 
 		if ( ! matchingTargetBlock ) {
 			changed = true;
+			reasons.add( 'missing-block' );
 			return cloneBlockRecord( sourceBlock );
 		}
+
+		matchedTargetClientIds.add( matchingTargetBlock.clientId );
 
 		const didOrderChange =
 			targetBlocks[ index ]?.clientId !== matchingTargetBlock.clientId;
 		if ( didOrderChange ) {
 			changed = true;
+			reasons.add( 'reordered-block' );
 		}
 
-		const syncedInnerBlocks = syncVariantBlockTree(
+		const syncedInnerBlocks = analyzeVariantStructure(
 			Array.isArray( sourceBlock.innerBlocks )
 				? sourceBlock.innerBlocks
 				: [],
@@ -3159,6 +3256,13 @@ function syncVariantBlockTree(
 		}
 
 		changed = true;
+		syncedInnerBlocks.reasons.forEach( ( reason ) =>
+			reasons.add( reason )
+		);
+
+		if ( syncedInnerBlocks.changed ) {
+			reasons.add( 'nested-structure-mismatch' );
+		}
 
 		return cloneBlockRecord( {
 			...matchingTargetBlock,
@@ -3166,10 +3270,61 @@ function syncVariantBlockTree(
 		} );
 	} );
 
+	if (
+		targetBlocks.some(
+			( block ) => ! matchedTargetClientIds.has( block.clientId )
+		)
+	) {
+		changed = true;
+		reasons.add( 'extra-block' );
+	}
+
 	return {
 		blocks,
 		changed,
+		reasons: Array.from( reasons ),
 	};
+}
+
+function getVariantStructureStatuses(
+	sourceVariantKey: VariantKey,
+	variantKeys: VariantKey[],
+	innerBlockByVariant: Map< VariantKey, BlockRecord >
+) {
+	const sourceVariantBlock = innerBlockByVariant.get( sourceVariantKey );
+	const sourceInnerBlocks = Array.isArray( sourceVariantBlock?.innerBlocks )
+		? sourceVariantBlock.innerBlocks
+		: [];
+
+	return variantKeys
+		.filter( ( variantKey ) => variantKey !== sourceVariantKey )
+		.map( ( variantKey ): VariantStructureStatus => {
+			const targetVariantBlock = innerBlockByVariant.get( variantKey );
+
+			if ( ! targetVariantBlock ) {
+				return {
+					matches: false,
+					reasons: [ 'missing-block' ],
+					variantKey,
+				};
+			}
+
+			const targetInnerBlocks = Array.isArray(
+				targetVariantBlock.innerBlocks
+			)
+				? targetVariantBlock.innerBlocks
+				: [];
+			const analysis = analyzeVariantStructure(
+				sourceInnerBlocks,
+				targetInnerBlocks
+			);
+
+			return {
+				matches: ! analysis.changed,
+				reasons: analysis.reasons,
+				variantKey,
+			};
+		} );
 }
 
 function createFreshExperimentIdentity(
@@ -3214,6 +3369,88 @@ function formatVariantLabels( variantKeys: VariantKey[] ) {
 		__( '%1$s, and %2$s', 'ab-test-block' ),
 		labels.slice( 0, -1 ).join( ', ' ),
 		labels[ labels.length - 1 ]
+	);
+}
+
+function formatVariantSummaryLabel( variantKeys: VariantKey[] ) {
+	const labels = variantKeys.map( ( variantKey ) =>
+		variantKey.toUpperCase()
+	);
+
+	if ( labels.length === 0 ) {
+		return '';
+	}
+
+	if ( labels.length === 1 ) {
+		return sprintf(
+			/* translators: %s: variant key */
+			__( 'Variant %s', 'ab-test-block' ),
+			labels[ 0 ]
+		);
+	}
+
+	if ( labels.length === 2 ) {
+		return sprintf(
+			/* translators: 1: first variant key, 2: second variant key */
+			__( 'Variants %1$s and %2$s', 'ab-test-block' ),
+			labels[ 0 ],
+			labels[ 1 ]
+		);
+	}
+
+	return sprintf(
+		/* translators: 1: comma-separated variant keys, 2: final variant key */
+		__( 'Variants %1$s, and %2$s', 'ab-test-block' ),
+		labels.slice( 0, -1 ).join( ', ' ),
+		labels[ labels.length - 1 ]
+	);
+}
+
+function getVariantStructureDriftSummary(
+	driftedVariantKeys: VariantKey[],
+	sourceVariantKey: VariantKey
+) {
+	if ( driftedVariantKeys.length === 1 ) {
+		return sprintf(
+			/* translators: 1: drifted variant key, 2: source variant key */
+			__( 'Variant %1$s differs from Variant %2$s.', 'ab-test-block' ),
+			driftedVariantKeys[ 0 ].toUpperCase(),
+			sourceVariantKey.toUpperCase()
+		);
+	}
+
+	return sprintf(
+		/* translators: 1: drifted variants summary, 2: source variant key */
+		__( '%1$s differ from Variant %2$s.', 'ab-test-block' ),
+		formatVariantSummaryLabel( driftedVariantKeys ),
+		sourceVariantKey.toUpperCase()
+	);
+}
+
+function getVariantStructureCanvasNoticeText(
+	driftedVariantKeys: VariantKey[],
+	sourceVariantKey: VariantKey
+) {
+	if ( driftedVariantKeys.length === 1 ) {
+		return sprintf(
+			/* translators: 1: drifted variant key, 2: source variant key */
+			__(
+				'Variant %1$s differs from the active structure in Variant %2$s.',
+				'ab-test-block'
+			),
+			driftedVariantKeys[ 0 ].toUpperCase(),
+			sourceVariantKey.toUpperCase()
+		);
+	}
+
+	return sprintf(
+		/* translators: 1: drifted variants summary, 2: source variant key */
+		__(
+			'%1$s differ from the active structure in Variant %2$s.',
+			'ab-test-block'
+		),
+		formatVariantSummaryLabel( driftedVariantKeys ),
+		sourceVariantKey.toUpperCase()
 	);
 }
 

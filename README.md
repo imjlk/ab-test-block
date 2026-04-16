@@ -12,7 +12,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Manual winner and CTR-based automatic winner
 -   Editor actions for marking a selected block as the primary CTA
 -   Fresh experiment lifecycle actions for starting a new run or using the current winner as a new baseline
--   Variant productivity actions for copying the visible variant or swapping A/B content
+-   Variant productivity actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
 -   Viewable impression and primary CTA click aggregation through REST + custom table
 -   Browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs
 -   Server stats surfaced back into the editor Diagnostics panel
@@ -45,6 +45,7 @@ Block Directory-ready Gutenberg block plugin for running A/B and A/B/C content e
 -   Optional `Keep all variants in HTML` mode uses the internal `css-hide` behavior and hides inactive variants after hydration.
 -   Query preview, locked winner, manual winner, automatic winner candidate, sticky assignment, and weighted random all share the same precedence in PHP and the browser runtime.
 -   The assignment label is hidden by default and can be toggled from the block toolbar or the `Labels & Hints` inspector panel.
+-   The `Variant structure` panel compares every other variant against the active structure and offers one-click sync when they no longer match.
 
 ## REST and Diagnostics Surface
 
@@ -103,6 +104,7 @@ bun run wordpress-org:preflight
 
 -   `bun run smoke:e2e:core` checks front-end render, `dom-prune` versus `css-hide`, `abtest_impression` / `abtest_stats`, sticky assignment for both `instance` and `experiment` scopes, and legacy `localStorage` migration into cookies.
 -   `bun run smoke:e2e:editor` focuses on editor regressions such as parent selection retention, toolbar variant switching, visible variant persistence, block add/remove, and Diagnostics panel visibility.
+-   The editor smoke also checks active-structure mismatch guidance, one-click structure sync, and A/B/C structure alignment flows.
 -   `bun run smoke:e2e` runs the full suite by combining `core` and `editor`.
 -   GitHub Actions only hard-asserts `smoke:e2e:core`.
 -   The editor smoke keeps the `Experiment Identity` panel `Experiment ID` toggle as a best-effort check so sidebar DOM changes do not make CI flaky.
