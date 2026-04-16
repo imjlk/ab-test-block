@@ -1,5 +1,22 @@
 # ab-test-block
 
+## 0.4.0 — 2026-04-16
+
+### Minor changes
+
+- [46ff085](https://github.com/imjlk/ab-test-block/commit/46ff085c6969e932d28c10ac85f498e4cf703c80) Added: a manual `Sync structure from active variant` authoring action so editors can align the block tree across Variants without overwriting matching copy.
+  
+  Changed: structure sync now preserves matching target content where block type and sibling order still line up, while filling missing blocks from the active Variant and removing extra blocks from target Variants.
+  
+  Added: editor smoke coverage for A/B and A/B/C structure sync, including add, reorder, and no-op sync flows. — Thanks @imjlk!
+- [d3ac240](https://github.com/imjlk/ab-test-block/commit/d3ac2407b4507b9cc40d325518f695f435c8cc42) Changed: `Compare variants` now keeps the active Variant as a decision-oriented baseline with changed-only cards, compact review badges, and direct `Edit Variant X` / `Sync structure now` actions.
+  
+  Changed: structure differences in `Compare variants` are now summarized as changed blocks only, including added, extra, reordered, and nested structure hints instead of repeating the full block tree.
+  
+  Changed: compare CTA and winner-state summaries now use the same explicit / fallback / no-CTA and manual / candidate / locked / winner-preview vocabulary shown elsewhere in the editor.
+  
+  Added: stronger editor smoke coverage for compare no-diff states, changed-block summaries, CTA transitions, decision badges, and compare-driven edit / sync flows. — Thanks @imjlk!
+
 ## 0.3.4 — 2026-04-07
 
 ### Patch changes
