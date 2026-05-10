@@ -8,6 +8,32 @@ import {
 	getCanonicalVariantExample,
 } from './canonical-demo';
 
+function ensureValidatorDirectAccessGuard( blockJsonFile: string ) {
+	const validatorFile = blockJsonFile.replace(
+		/block\.json$/,
+		'typia-validator.php'
+	);
+
+	if ( ! fs.existsSync( validatorFile ) ) {
+		return;
+	}
+
+	const current = fs.readFileSync( validatorFile, 'utf8' );
+
+	if ( current.includes( "defined( 'ABSPATH' )" ) ) {
+		return;
+	}
+
+	const next = current.replace(
+		'<?php\ndeclare(strict_types=1);\n',
+		"<?php\ndeclare(strict_types=1);\n\nif ( ! defined( 'ABSPATH' ) ) {\n\texit;\n}\n"
+	);
+
+	if ( current !== next ) {
+		fs.writeFileSync( validatorFile, next );
+	}
+}
+
 async function main() {
 	const blocks = [
 		{
@@ -50,6 +76,7 @@ async function main() {
 			block.blockJsonFile,
 			`${ JSON.stringify( nextMetadata, null, '\t' ) }\n`
 		);
+		ensureValidatorDirectAccessGuard( block.blockJsonFile );
 
 		console.log(
 			`✅ Generated block metadata for ${ block.sourceTypeName }`

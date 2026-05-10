@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Generated from typia.manifest.json. Do not edit manually.
  */

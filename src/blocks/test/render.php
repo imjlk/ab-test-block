@@ -168,7 +168,12 @@ $wrapper_attributes = get_block_wrapper_attributes(
 );
 ?>
 
-<section <?php echo $wrapper_attributes; ?>>
+<section
+	<?php
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- get_block_wrapper_attributes() returns a safe attribute string.
+	echo $wrapper_attributes;
+	?>
+>
 	<p
 		class="wp-block-abtest-block-test__runtime-label"
 		<?php echo '' === $runtime_label ? 'hidden' : ''; ?>
@@ -180,6 +185,9 @@ $wrapper_attributes = get_block_wrapper_attributes(
 		hidden
 	></p>
 	<div class="wp-block-abtest-block-test__runtime-variants">
-		<?php echo $rendered_variants; ?>
+		<?php
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Variant HTML is rendered from trusted parsed block content.
+		echo $rendered_variants;
+		?>
 	</div>
 </section>

@@ -105,7 +105,16 @@ No. The server stores aggregate experiment stats only. Sticky assignment is brow
 
 Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
+= Where is the editable source code? =
+
+The plugin ships with compiled build assets for WordPress, and the human-readable source is publicly maintained at https://github.com/imjlk/ab-test-block. The release package also includes the `src/` directory so the editor code, styles, and block sources remain reviewable.
+
 == Changelog ==
+
+= 0.4.0 =
+
+* Added starter templates, compare cards, CTA visibility helpers, lifecycle actions, winner diagnostics, and structure sync tools for faster experiment authoring.
+* Hardened release packaging and WordPress.org staging so versioned block metadata and staged payloads stay aligned with the tagged release.
 
 = 0.3.4 =
 

@@ -14,7 +14,8 @@
 		"build",
 		"readme.txt",
 		"README.md",
-		"package.json"
+		"package.json",
+		"src"
 	],
 	"scripts": {
 		"sync-types": "tsx scripts/sync-types-to-block-json.ts",
