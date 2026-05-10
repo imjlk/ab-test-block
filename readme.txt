@@ -16,26 +16,20 @@ A/B Test Block is a pure block plugin for the WordPress Block Directory.
 
 Build one experiment block, author up to three content variants, and let WordPress choose which variant to show with preview overrides, sticky assignment, weighted delivery, and winner rules.
 
-Features included in this version:
+Highlights:
 
 * One top-level `A/B Test` block with an internal `Variant` child block
-* A/B and A/B/C authoring flows
-* Weighted traffic allocation with normalize and equalize controls
-* Query-string preview overrides
-* Sticky visitor assignment using first-party cookies
-* Optional shared-experiment sticky scope by Experiment ID
-* Front-end output modes for rendering only the chosen variant or keeping all variants in HTML
-* Manual winner selection
-* CTR-based automatic winner reevaluation with readable Diagnostics summaries
-* Editor actions for marking a selected block as the primary CTA
+* A/B and A/B/C authoring flows with weighted traffic allocation
+* Sticky visitor assignment using first-party cookies, scoped per page block or shared Experiment ID
+* Query-string preview overrides for testing specific variants before publishing
+* Front-end output modes for rendering only the chosen variant or keeping all variants in HTML for compatibility
+* Manual winner selection and CTR-based automatic winner reevaluation
 * Quick-start starter templates for common experiment layouts
 * Experiment lifecycle actions for starting a new run or using the current winner as a fresh baseline
-* Variant authoring actions for copying the visible variant, swapping A/B content, and syncing structure from the active variant
-* Decision-oriented Compare variants cards with changed-block summaries plus direct edit and structure sync actions
-* Viewable impression and primary CTA click aggregation
+* Variant authoring tools for copying, swapping, comparing, and syncing structure
+* Viewable impression and primary CTA click aggregation in WordPress
+* Editor Diagnostics stats for the current block and shared experiment
 * Browser events plus optional `window.kexpLayer`, `window.dataLayer`, and Clarity hooks
-* Editor Diagnostics stats for both the current block and shared experiment
-* Optional assignment label that can be shown in both the editor and front end
 * Read-only WP-CLI commands for experiment and winner-state inspection
 
 Not included:
@@ -49,6 +43,18 @@ Not included:
 1. Upload the plugin files to the `/wp-content/plugins/ab-test-block` directory, or install the plugin through the WordPress plugins screen.
 2. Activate the plugin through the Plugins screen in WordPress.
 3. Insert the `A/B Test` block in the editor and start editing variants.
+
+== Setting Up Your First Test ==
+
+1. Add the `A/B Test` block to a post or page.
+2. Choose `A/B` or `A/B/C` in the `General` panel.
+3. Add content to each Variant, or use a quick-start template while the block is empty.
+4. Edit the heading, copy, image, button, or link in each Variant.
+5. Select the button or link you care about and choose `Primary CTA`.
+6. Keep the default 50/50 traffic split, or adjust weights in `Traffic Allocation`.
+7. Publish the page. Viewable impressions and primary CTA clicks are counted automatically.
+8. Open `Diagnostics` to review impressions, clicks, CTR, and winner status.
+9. When you have enough data, choose a manual winner or switch `Winning Rules` to automatic.
 
 == Screenshots ==
 
@@ -105,6 +111,14 @@ No. The server stores aggregate experiment stats only. Sticky assignment is brow
 
 Add `define( 'AB_TEST_BLOCK_DISABLE_TRACKING', true );` to your site configuration to stop new tracking writes and browser-layer emits while keeping saved stats readable.
 
+= What data does this plugin store or send? =
+
+The plugin stores aggregate experiment stats in your WordPress database: variant impressions, primary CTA clicks, CTR, and last update times. Sticky assignment is stored in a first-party browser cookie so the same visitor can keep seeing the same variant. The plugin does not create accounts, sync to a SaaS service, or send experiment data to an external server by itself.
+
+= How do the optional analytics hooks work? =
+
+The optional browser event, `window.kexpLayer`, `window.dataLayer`, and Clarity hook outputs only emit to objects that already exist on the page or to normal browser events. The plugin does not load Google Tag Manager, Microsoft Clarity, or another analytics provider for you. Site owners should make sure their cookie and privacy notices match how they configure tracking.
+
 = Where is the editable source code? =
 
 The plugin ships with compiled build assets for WordPress, and the human-readable source is publicly maintained at https://github.com/imjlk/ab-test-block. The release package also includes the `src/` directory so the editor code, styles, and block sources remain reviewable.
@@ -116,37 +130,4 @@ The plugin ships with compiled build assets for WordPress, and the human-readabl
 * Added starter templates, compare cards, CTA visibility helpers, lifecycle actions, winner diagnostics, and structure sync tools for faster experiment authoring.
 * Hardened release packaging and WordPress.org staging so versioned block metadata and staged payloads stay aligned with the tagged release.
 
-= 0.3.4 =
-
-* Refined Assignment label, Quick summary, Diagnostics, and Front-end output wording across the toolbar and inspector.
-* Hardened `Only render chosen variant` so malformed saved content still renders at most one fallback Variant and explains the fallback path in Diagnostics.
-
-= 0.3.3 =
-
-* Added cookie-first sticky assignment, shared Assignment label controls, and front-end output modes for rendering only the chosen Variant or keeping all variants in HTML.
-* Finalized canonical demo content, Playground previews, and WordPress.org screenshots so submission assets match the live block UI.
-
-= 0.3.2 =
-
-* Polished Block Directory submission assets and synchronized the editor and front-end shell styling.
-* Added visual parity baselines so screenshot and Playground fixtures stay aligned with the live block UI.
-
-= 0.3.1 =
-
-* Refined the editor so the A/B Test parent block stays lightweight and the active Variant remains the focus.
-* Added stats readback in the editor Diagnostics panel plus read-only WP-CLI inspection commands.
-* Added optional shared-experiment sticky scope, release zip smoke checks, and a site-wide tracking kill switch.
-
-= 0.3.0 =
-
-* Added editor and browser stats surfaces, shared experiment aggregation, and improved debug visibility.
-* Added Playground blueprints, preview links, and release automation hardening.
-
-= 0.2.0 =
-
-* Rebuilt the starter scaffold as a pure A/B testing block plugin
-* Added parent/child block structure for variants
-* Added weighted delivery, sticky assignment, and query preview overrides
-* Added manual winner and automatic winner reevaluation
-* Added first-party event aggregation through REST and a custom stats table
-* Refined tracking so impressions are viewable and clicks prefer explicit CTA markers
+Older release history is maintained at https://github.com/imjlk/ab-test-block/blob/main/CHANGELOG.md.
