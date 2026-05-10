@@ -103,6 +103,7 @@ bun run smoke:e2e:editor
 bun run visual:e2e:check
 bun run plugin-zip
 bun run wordpress-org:preflight
+bun run plugin-check:submission
 ```
 
 ## Smoke Modes
@@ -158,6 +159,7 @@ bun run plugin-zip
 bun run playground:sync
 bun run wordpress-org:preflight
 bun run wordpress-org:stage
+bun run plugin-check:submission
 ```
 
 This generates a submission-ready zip that includes the built plugin files under the `ab-test-block` root folder.
@@ -181,7 +183,10 @@ Local dry-run commands:
 bun run plugin-zip
 bun run wordpress-org:preflight
 bun run wordpress-org:stage
+bun run plugin-check:submission
 ```
+
+`bun run plugin-check:submission` builds the zip, stages the WordPress.org payload, and runs `Plugin Check` inside a disposable slug-correct wp-env install so submission validation reflects the real shipped plugin instead of the repo root.
 
 `bun run wordpress-org:stage` writes a ready-to-commit SVN layout under `.wordpress-org-dist/ab-test-block/`:
 

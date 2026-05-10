@@ -9,6 +9,7 @@
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       ab-test-block
+ * Domain Path:       /languages
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -18,6 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'AB_TEST_BLOCK_STORAGE_VERSION', '2.0.0' );
 define( 'AB_TEST_BLOCK_PUBLIC_WRITE_TTL', HOUR_IN_SECONDS );
 define( 'AB_TEST_BLOCK_WINNER_META_KEY', '_ab_test_block_winner_state' );
+define( 'AB_TEST_BLOCK_SUMMARY_TRANSIENT_TTL', MINUTE_IN_SECONDS );
 
 function ab_test_block_get_block_build_dir( $relative_path ) {
 	$candidates = array(
@@ -53,6 +55,43 @@ function ab_test_block_get_stats_table_name() {
 	global $wpdb;
 
 	return $wpdb->prefix . 'abtest_block_stats';
+}
+
+function ab_test_block_get_public_query_parameter( $query_key ) {
+	if ( ! is_string( $query_key ) || '' === $query_key ) {
+		return null;
+	}
+
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public preview query params are read-only and sanitized before compare-only use.
+	$query_value = isset( $_GET[ $query_key ] ) ? sanitize_text_field( wp_unslash( $_GET[ $query_key ] ) ) : null;
+
+	return is_string( $query_value ) ? $query_value : null;
+}
+
+function ab_test_block_get_experiment_index_cache_version() {
+	$version = (int) get_option( 'ab_test_block_experiment_index_cache_version', 1 );
+
+	return max( 1, $version );
+}
+
+function ab_test_block_bump_experiment_index_cache_version() {
+	update_option(
+		'ab_test_block_experiment_index_cache_version',
+		ab_test_block_get_experiment_index_cache_version() + 1,
+		false
+	);
+}
+
+function ab_test_block_get_recent_authored_summary_transient_key( $experiment_id, $limit ) {
+	return 'abtb_authored_' . md5( (string) $experiment_id . ':' . (int) $limit );
+}
+
+function ab_test_block_get_experiment_index_transient_key( $limit ) {
+	return sprintf(
+		'abtb_experiment_index_%d_%d',
+		ab_test_block_get_experiment_index_cache_version(),
+		max( 1, min( 200, (int) $limit ) )
+	);
 }
 
 function ab_test_block_variant_keys( $variant_count ) {
@@ -188,7 +227,7 @@ function ab_test_block_pick_weighted_variant( $weights, $variant_count ) {
 
 function ab_test_block_resolve_preview_variant( $attributes, $experiment_id, $variant_count ) {
 	$variant_keys = ab_test_block_variant_keys( $variant_count );
-	$global       = isset( $_GET['abtest'] ) ? sanitize_text_field( wp_unslash( $_GET['abtest'] ) ) : '';
+	$global       = ab_test_block_get_public_query_parameter( 'abtest' ) ?? '';
 
 	if ( '' !== $global ) {
 		$parts = explode( ':', $global, 2 );
@@ -203,12 +242,14 @@ function ab_test_block_resolve_preview_variant( $attributes, $experiment_id, $va
 	}
 
 	$preview_query_key = isset( $attributes['previewQueryKey'] ) ? (string) $attributes['previewQueryKey'] : '';
-	if ( '' === $preview_query_key || ! isset( $_GET[ $preview_query_key ] ) ) {
+	$preview_query_value = ab_test_block_get_public_query_parameter( $preview_query_key );
+
+	if ( '' === $preview_query_key || null === $preview_query_value ) {
 		return null;
 	}
 
 	$preview_variant = ab_test_block_sanitize_variant_key(
-		sanitize_text_field( wp_unslash( $_GET[ $preview_query_key ] ) ),
+		$preview_query_value,
 		$variant_count
 	);
 
@@ -568,6 +609,7 @@ function ab_test_block_update_winner_state( $post_id, $block_instance_id, $state
 	$state_map                         = ab_test_block_get_winner_state_map( $post_id );
 	$state_map[ $block_instance_id ]   = ab_test_block_sanitize_winner_state( $state, $variant_count, $window_days );
 	update_post_meta( $post_id, AB_TEST_BLOCK_WINNER_META_KEY, $state_map );
+	ab_test_block_bump_experiment_index_cache_version();
 
 	return $state_map[ $block_instance_id ];
 }
@@ -656,14 +698,23 @@ function ab_test_block_get_post_experiment_attributes( $post_id, $experiment_id 
 function ab_test_block_get_recent_authored_experiment_summary( $experiment_id, $limit = 25 ) {
 	global $wpdb;
 
+	$transient_key = ab_test_block_get_recent_authored_summary_transient_key( $experiment_id, $limit );
+	$cached        = get_transient( $transient_key );
+
+	if ( is_array( $cached ) ) {
+		return $cached;
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This read-mostly authored summary uses a short-lived transient wrapper.
 	$post_ids = $wpdb->get_col(
 		$wpdb->prepare(
-			"SELECT ID
-			FROM {$wpdb->posts}
+			'SELECT ID
+			FROM %i
 			WHERE post_content LIKE %s
-				AND post_status NOT IN ( 'auto-draft', 'trash' )
+				AND post_status NOT IN ( \'auto-draft\', \'trash\' )
 			ORDER BY post_modified_gmt DESC, ID DESC
-			LIMIT %d",
+			LIMIT %d',
+			$wpdb->posts,
 			'%' . $wpdb->esc_like( (string) $experiment_id ) . '%',
 			max( 1, min( 100, (int) $limit ) )
 		)
@@ -707,7 +758,13 @@ function ab_test_block_get_recent_authored_experiment_summary( $experiment_id, $
 		}
 	}
 
-	return $summary['postCount'] > 0 ? $summary : null;
+	if ( $summary['postCount'] > 0 ) {
+		set_transient( $transient_key, $summary, AB_TEST_BLOCK_SUMMARY_TRANSIENT_TTL );
+
+		return $summary;
+	}
+
+	return null;
 }
 
 function ab_test_block_find_recent_experiment_attributes( $experiment_id, $limit = 25 ) {
@@ -930,12 +987,12 @@ function ab_test_block_can_read_stats( WP_REST_Request $request ) {
 function ab_test_block_record_event( $payload ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
 	$event_date = gmdate( 'Y-m-d', (int) $payload['timestamp'] );
 	$timestamp  = current_time( 'mysql', true );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Event counters must update current DB truth immediately.
 	$result     = $wpdb->query(
 		$wpdb->prepare(
-			"INSERT INTO {$table_name} (
+			'INSERT INTO %i (
 				post_id,
 				block_instance_id,
 				experiment_id,
@@ -948,7 +1005,8 @@ function ab_test_block_record_event( $payload ) {
 			) VALUES ( %d, %s, %s, %s, %s, %s, %d, %s, %s )
 			ON DUPLICATE KEY UPDATE
 				event_count = event_count + VALUES(event_count),
-				updated_at = VALUES(updated_at)",
+				updated_at = VALUES(updated_at)',
+			ab_test_block_get_stats_table_name(),
 			(int) $payload['postId'],
 			(string) $payload['blockInstanceId'],
 			(string) $payload['experimentId'],
@@ -964,6 +1022,8 @@ function ab_test_block_record_event( $payload ) {
 	if ( false === $result ) {
 		return new WP_Error( 'ab_test_block_event_failed', 'Failed to record the event.', array( 'status' => 500 ) );
 	}
+
+	ab_test_block_bump_experiment_index_cache_version();
 
 	return true;
 }
@@ -981,19 +1041,20 @@ function ab_test_block_normalize_stats_updated_at( $updated_at ) {
 function ab_test_block_get_instance_variant_aggregates( $post_id, $block_instance_id, $variant_count, $window_days ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
 	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Runtime aggregates must read current DB truth.
 	$rows       = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT
+			'SELECT
 				variant_key,
-				SUM( CASE WHEN event_type = 'impression' THEN event_count ELSE 0 END ) AS impressions,
-				SUM( CASE WHEN event_type = 'click' THEN event_count ELSE 0 END ) AS clicks
-			FROM {$table_name}
+				SUM( CASE WHEN event_type = \'impression\' THEN event_count ELSE 0 END ) AS impressions,
+				SUM( CASE WHEN event_type = \'click\' THEN event_count ELSE 0 END ) AS clicks
+			FROM %i
 			WHERE post_id = %d
 				AND block_instance_id = %s
 				AND event_date >= %s
-			GROUP BY variant_key",
+			GROUP BY variant_key',
+			ab_test_block_get_stats_table_name(),
 			(int) $post_id,
 			(string) $block_instance_id,
 			$cutoff
@@ -1028,15 +1089,16 @@ function ab_test_block_get_instance_variant_aggregates( $post_id, $block_instanc
 function ab_test_block_get_instance_stats_summary( $post_id, $block_instance_id, $window_days ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
 	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Runtime summaries must read current DB truth.
 	$row        = $wpdb->get_row(
 		$wpdb->prepare(
-			"SELECT MAX(updated_at) AS updated_at
-			FROM {$table_name}
+			'SELECT MAX(updated_at) AS updated_at
+			FROM %i
 			WHERE post_id = %d
 				AND block_instance_id = %s
-				AND event_date >= %s",
+				AND event_date >= %s',
+			ab_test_block_get_stats_table_name(),
 			(int) $post_id,
 			(string) $block_instance_id,
 			$cutoff
@@ -1052,18 +1114,19 @@ function ab_test_block_get_instance_stats_summary( $post_id, $block_instance_id,
 function ab_test_block_get_experiment_variant_aggregates( $experiment_id, $variant_count, $window_days ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
 	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Cross-post aggregates must read current DB truth.
 	$rows       = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT
+			'SELECT
 				variant_key,
-				SUM( CASE WHEN event_type = 'impression' THEN event_count ELSE 0 END ) AS impressions,
-				SUM( CASE WHEN event_type = 'click' THEN event_count ELSE 0 END ) AS clicks
-			FROM {$table_name}
+				SUM( CASE WHEN event_type = \'impression\' THEN event_count ELSE 0 END ) AS impressions,
+				SUM( CASE WHEN event_type = \'click\' THEN event_count ELSE 0 END ) AS clicks
+			FROM %i
 			WHERE experiment_id = %s
 				AND event_date >= %s
-			GROUP BY variant_key",
+			GROUP BY variant_key',
+			ab_test_block_get_stats_table_name(),
 			(string) $experiment_id,
 			$cutoff
 		),
@@ -1097,17 +1160,18 @@ function ab_test_block_get_experiment_variant_aggregates( $experiment_id, $varia
 function ab_test_block_get_experiment_stats_summary( $experiment_id, $window_days ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
 	$cutoff     = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS * max( 0, ( (int) $window_days ) - 1 ) );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Cross-post summaries must read current DB truth.
 	$row        = $wpdb->get_row(
 		$wpdb->prepare(
-			"SELECT
+			'SELECT
 				COUNT(DISTINCT post_id) AS post_count,
-				COUNT(DISTINCT CONCAT(post_id, ':', block_instance_id)) AS block_instance_count,
+				COUNT(DISTINCT CONCAT(post_id, \':\', block_instance_id)) AS block_instance_count,
 				MAX(updated_at) AS updated_at
-			FROM {$table_name}
+			FROM %i
 			WHERE experiment_id = %s
-				AND event_date >= %s",
+				AND event_date >= %s',
+			ab_test_block_get_stats_table_name(),
 			(string) $experiment_id,
 			$cutoff
 		),
@@ -1228,18 +1292,19 @@ function ab_test_block_get_variant_aggregates( $post_id, $block_instance_id, $va
 function ab_test_block_get_instance_reference_from_stats( $post_id, $block_instance_id ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reference lookup must follow current stats truth.
 	$row        = $wpdb->get_row(
 		$wpdb->prepare(
-			"SELECT
+			'SELECT
 				experiment_id,
-				MAX( CASE WHEN variant_key = 'c' THEN 1 ELSE 0 END ) AS has_variant_c
-			FROM {$table_name}
+				MAX( CASE WHEN variant_key = \'c\' THEN 1 ELSE 0 END ) AS has_variant_c
+			FROM %i
 			WHERE post_id = %d
 				AND block_instance_id = %s
 			GROUP BY experiment_id
 			ORDER BY MAX(updated_at) DESC
-			LIMIT 1",
+			LIMIT 1',
+			ab_test_block_get_stats_table_name(),
 			(int) $post_id,
 			(string) $block_instance_id
 		),
@@ -1259,14 +1324,15 @@ function ab_test_block_get_instance_reference_from_stats( $post_id, $block_insta
 function ab_test_block_get_experiment_reference_from_stats( $experiment_id ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reference lookup must follow current stats truth.
 	$row        = $wpdb->get_row(
 		$wpdb->prepare(
-			"SELECT post_id, block_instance_id
-			FROM {$table_name}
+			'SELECT post_id, block_instance_id
+			FROM %i
 			WHERE experiment_id = %s
 			ORDER BY updated_at DESC, id DESC
-			LIMIT 1",
+			LIMIT 1',
+			ab_test_block_get_stats_table_name(),
 			(string) $experiment_id
 		),
 		ARRAY_A
@@ -1285,19 +1351,28 @@ function ab_test_block_get_experiment_reference_from_stats( $experiment_id ) {
 function ab_test_block_get_experiment_index( $limit = 20 ) {
 	global $wpdb;
 
-	$table_name = ab_test_block_get_stats_table_name();
-	$rows       = $wpdb->get_results(
+	$normalized_limit = max( 1, min( 200, (int) $limit ) );
+	$transient_key    = ab_test_block_get_experiment_index_transient_key( $normalized_limit );
+	$cached           = get_transient( $transient_key );
+
+	if ( is_array( $cached ) ) {
+		return $cached;
+	}
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This read-mostly index uses a short-lived transient wrapper.
+	$rows  = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT
+			'SELECT
 				experiment_id,
 				COUNT(DISTINCT post_id) AS post_count,
-				COUNT(DISTINCT CONCAT(post_id, ':', block_instance_id)) AS block_instance_count,
+				COUNT(DISTINCT CONCAT(post_id, \':\', block_instance_id)) AS block_instance_count,
 				MAX(updated_at) AS updated_at
-			FROM {$table_name}
+			FROM %i
 			GROUP BY experiment_id
 			ORDER BY MAX(updated_at) DESC
-			LIMIT %d",
-			max( 1, min( 200, (int) $limit ) )
+			LIMIT %d',
+			ab_test_block_get_stats_table_name(),
+			$normalized_limit
 		),
 		ARRAY_A
 	);
@@ -1321,6 +1396,8 @@ function ab_test_block_get_experiment_index( $limit = 20 ) {
 			'updated_at'           => ab_test_block_normalize_stats_updated_at( $row['updated_at'] ?? null ),
 		);
 	}
+
+	set_transient( $transient_key, $items, AB_TEST_BLOCK_SUMMARY_TRANSIENT_TTL );
 
 	return $items;
 }

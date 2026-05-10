@@ -12,6 +12,7 @@
 	"files": [
 		"ab-test-block.php",
 		"build",
+		"languages",
 		"readme.txt",
 		"README.md",
 		"package.json",
@@ -28,6 +29,7 @@
 		"wordpress-org:preflight": "tsx scripts/wordpress-org-preflight.ts",
 		"wordpress-org:stage": "tsx scripts/wordpress-org-stage.ts",
 		"wordpress-org:sync-screenshots": "tsx scripts/sync-wordpress-org-screenshots.ts",
+		"plugin-check:submission": "tsx scripts/plugin-check-submission.ts",
 		"build": "bun run sync-types && bun run sync-rest && wp-scripts build --experimental-modules",
 		"start": "bun run sync-types && bun run sync-rest && wp-scripts start --experimental-modules",
 		"dev": "bun run start",
