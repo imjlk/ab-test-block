@@ -1,5 +1,15 @@
 # ab-test-block
 
+## 0.4.1 — 2026-05-10
+
+### Patch changes
+
+- [3fd9da0](https://github.com/imjlk/ab-test-block/commit/3fd9da03ed8e7198e5002a5549839906fd2fd257) Changed: added a staged submission `Plugin Check` workflow so contributor validation now runs against the actual WordPress.org payload instead of the repo root.
+  
+  Changed: reorganized preview query parsing, packaging metadata, and render internals to better match WordPress plugin submission expectations without changing runtime experiment behavior.
+  
+  Fixed: reduced submission-facing packaging and database query issues so the shipped plugin payload now passes `Plugin Check` without errors. — Thanks @imjlk!
+
 ## 0.4.0 — 2026-04-16
 
 ### Minor changes
